@@ -35,7 +35,6 @@ forward n (Location f l c) = Location f l (c+n)
 space :: Location -> Location
 space = forward 1
 
-
 data TokenKind
 	= Identifier
 	| Operator
@@ -43,7 +42,7 @@ data TokenKind
 	| IntegerLiteral
 	| DecimalLiteral
 	| StringLiteral
-	deriving Show
+	deriving (Show, Eq)
 
 data Token = Token
 	{ token :: String
@@ -97,9 +96,9 @@ lex' (c:cs) at
 	|c == '\r' = lex' cs (carriageReturn at)
 	|c == '\n' = lex' cs (newline at)
 	|c == '\t' = lex' cs (tab at)
-	|c `elem` ";{}()[]." = Token [c] at Special : lex' cs (space at)
+	|c `elem` ";{}()[].!" = Token [c] at Special : lex' cs (space at)
 	|c `elem` ops = let (before, after) = splitWhile (`elem` ops) (c:cs) in
-		Token before at Operator : lex' after (forward (length before) at)
+		Token before at (if before `elem` specialOperators then Special else Operator) : lex' after (forward (length before) at)
 	|c `elem` identStart = let (before, after) = splitWhile (`elem` identContinue) (c:cs) in
 		Token before at (wordType before) : lex' after (forward (length before) at)
 	|c == '"' = lexString cs "" at at
@@ -107,7 +106,8 @@ lex' (c:cs) at
 	|otherwise = error $ "Invalid character `" ++ [c] ++ "` in string"
 	where
 	ops :: String
-	ops = "+-*/%=<>!#$^&|?:"
+	ops = "+-*/%=<>#$^&|?:"
+	specialOperators = ["->", "="]
 	identStart :: String
 	identStart = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 	identContinue :: String
