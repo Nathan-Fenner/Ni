@@ -82,8 +82,8 @@ data Statement
 	| StatementIf Expression [Statement]
 	| StatementIfElse Expression [Statement] [Statement]
 	| StatementWhile Expression [Statement]
-	| StatementReturn (Maybe Expression)
-	| StatementBreak
+	| StatementReturn Token (Maybe Expression)
+	| StatementBreak Token
 	deriving Show
 
 parseAssign :: Parse Statement
@@ -128,14 +128,28 @@ parseWhile = do
 
 parseReturn :: Parse Statement
 parseReturn = do
-	expectSpecial "return" "expected `return` to begin return-statement"
-	checkTokenName ";" ??? (return $ StatementReturn Nothing, do
+	returnToken <- expectSpecial "return" "expected `return` to begin return-statement"
+	checkTokenName ";" ??? (return $ StatementReturn returnToken Nothing, do
 		value <- parseExpression
 		expectSpecial ";" "expected `;` to follow return statement expression"
-		return $ StatementReturn $ Just value)
+		return $ StatementReturn returnToken $ Just value)
+
+parseBreak :: Parse Statement
+parseBreak = do
+	breakToken <- expectSpecial "break" "expected `break` to begin break-statement"
+	return $ StatementBreak breakToken
 
 parseStatement :: Parse Statement
-parseStatement = parseVar ||| parseIf ||| parseWhile ||| parseReturn ||| parseAssign ||| parseDo
+parseStatement = do
+	peek <- peekMaybe
+	case peek of
+		Nothing -> reject "expected statement"
+		Just t -> case token t of
+			"var" -> parseVar
+			"if" -> parseIf
+			"while" -> parseWhile
+			"return" -> parseReturn
+			_ -> parseAssign ||| parseDo
 
 parseBlock :: Parse [Statement]
 parseBlock = do
