@@ -2,7 +2,6 @@
 import Parse
 import Lex
 import ParseExpression
-import ParseStatement
 
 main = do
 	example <- readFile "example.ni"

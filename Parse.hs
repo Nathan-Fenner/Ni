@@ -60,6 +60,11 @@ parseMany p = (do
 parseMaybe :: Parse a -> Parse (Maybe a)
 parseMaybe p = fmap Just p ||| return Nothing
 
+peekMaybe :: Parse (Maybe Token)
+peekMaybe = Parse $ \(file, tokens) -> case tokens of
+	[] -> Success Nothing tokens
+	(token : _) -> Success (Just token) tokens
+
 parseManyWhile :: Parse Bool -> Parse a -> Parse [a]
 parseManyWhile cond p = cond ??? (do
 	first <- p
@@ -95,3 +100,6 @@ checkToken f = Parse $ \(_, ts) -> case ts of
 
 checkTokenName :: String -> Parse Bool
 checkTokenName name = checkToken (\t -> token t == name)
+
+maybeCheckTokenName :: String -> Parse (Maybe Token)
+maybeCheckTokenName name = fmap Just (expectSpecial name "***") ||| return Nothing
