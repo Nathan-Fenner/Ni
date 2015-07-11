@@ -85,6 +85,7 @@ data Statement
 	| StatementReturn Token (Maybe Expression)
 	| StatementBreak Token
 	| StatementLet Token [Statement]
+	| StatementFunc { funcName :: Token, argumentsStatement :: [(Token, Type)], funcBangStatement :: Maybe Token, returnTypeStatement :: Maybe Type , bodyStatement :: [Statement] }
 	deriving Show
 
 parseAssign :: Parse Statement
@@ -147,6 +148,16 @@ parseLet = do
 	-- it's better for parsing to just consume a block (and report good error messages)
 	block <- parseBlock
 	return $ StatementLet letToken block
+
+parseFuncDef :: Parse Statement
+parseFuncDef = do
+	expectSpecial "func" "expected `func` to begin function declaration"
+	funcName <- expectIdentifier "expected function name to follow `func` keyword"
+	funcArgs <- parseManyUntil (peekTokenName ":" ||| peekTokenName "{" ||| peekTokenName "!") parseFuncArg
+	bang <- maybeCheckTokenName "!"
+	returnType <- parseMaybe (expectSpecial ":" "(optional) return type" >> parseType)
+	body <- parseBlock
+	return $ StatementFunc funcName funcArgs bang returnType body
 
 parseStatement :: Parse Statement
 parseStatement = do
