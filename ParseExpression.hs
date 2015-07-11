@@ -13,6 +13,7 @@ data Expression
 	| ExpressionBang Token
 	| ExpressionCall Expression [Expression]
 	| ExpressionFunc { arguments :: [(Token, Type)], funcBang :: Maybe Token, returnType :: Maybe Type , body :: [Statement] }
+	| ExpressionOp Expression Token Expression
 	deriving Show
 
 parseIdentifier :: Parse Expression
@@ -41,6 +42,7 @@ parseAtom
 	||| parseDecimalLiteral
 	||| parseStringLiteral
 	||| parseParens
+	||| parseFunc
 
 parseBang :: Parse Expression
 parseBang = fmap ExpressionBang $ expectSpecial "!" "bang"
@@ -71,8 +73,52 @@ parseFunc = do
 	body <- parseBlock
 	return $ ExpressionFunc funcArgs bang returnType body
 
+data Op a = OpLeaf a | OpBranch (Op a) Token (Op a) deriving Show
+
+parseOp :: [String] -> Parse a -> Parse (Op a)
+parseOp names atom = go where
+	go = do
+	left <- atom
+	opMaybe <- lookOperators names
+	case opMaybe of
+		Nothing -> return $ OpLeaf left
+		Just op -> do
+			right <- go
+			return $ OpBranch (OpLeaf left) op right
+
+opReplace :: (a -> t) -> (t -> Token -> t -> t) -> Op a -> t
+opReplace leafs branches tree = go tree where
+	go (OpLeaf x) = leafs x
+	go (OpBranch left' op right') = branches left op right where
+		left = go left'
+		right = go right'
+
+
+opFlip :: Op a -> Op a
+opFlip (OpLeaf a) = OpLeaf a
+opFlip (OpBranch left op (OpBranch middle op' right)) = opFlip $ OpBranch (OpBranch left op middle) op' right
+opFlip (OpBranch left op right) = OpBranch left op $ opFlip right
+
+parseOperators :: [(Bool, [String])] -> Parse Expression
+parseOperators [] = parseCall
+parseOperators ((dir, ops) : rest) = return . opReplace id ExpressionOp =<< fmap flipper (parseOp ops (parseOperators rest)) where
+	flipper = case dir of
+		True -> id
+		False -> opFlip
+
 parseExpression :: Parse Expression
-parseExpression = parseCall
+parseExpression = parseOperators
+	[ (True, ["$"])
+	, (False, [">>", ">>="])
+	, (False, ["<<", "=<<"])
+	, (False, ["."])
+	, (False, ["||"])
+	, (False, ["&&"])
+	, (False, ["==","<",">","<=",">=","/="])
+	, (True, ["++"])
+	, (False, ["+", "-"])
+	, (False, ["*", "/", "%"])
+	]
 
 data Statement
 	= StatementAssign Token Expression

@@ -103,3 +103,8 @@ checkTokenName name = checkToken (\t -> token t == name)
 
 maybeCheckTokenName :: String -> Parse (Maybe Token)
 maybeCheckTokenName name = fmap Just (expectSpecial name "***") ||| return Nothing
+
+lookOperators :: [String] -> Parse (Maybe Token)
+lookOperators names = Parse $ \(_, ts) -> case ts of
+	[] -> Success Nothing ts
+	(t : rest) -> if kind t == Operator && token t `elem` names then Success (Just t) rest else Success Nothing ts
