@@ -169,6 +169,8 @@ parseStatement = do
 			"if" -> parseIf
 			"while" -> parseWhile
 			"return" -> parseReturn
+			"let" -> parseLet
+			"func" -> parseFuncDef
 			_ -> parseAssign ||| parseDo
 
 parseBlock :: Parse [Statement]
