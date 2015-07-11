@@ -84,6 +84,7 @@ data Statement
 	| StatementWhile Expression [Statement]
 	| StatementReturn Token (Maybe Expression)
 	| StatementBreak Token
+	| StatementLet Token [Statement]
 	deriving Show
 
 parseAssign :: Parse Statement
@@ -138,6 +139,14 @@ parseBreak :: Parse Statement
 parseBreak = do
 	breakToken <- expectSpecial "break" "expected `break` to begin break-statement"
 	return $ StatementBreak breakToken
+
+parseLet :: Parse Statement
+parseLet = do
+	letToken <- expectSpecial "let" "expected `let` to begin let-block"
+	-- although we only want assignments & variable declarations,
+	-- it's better for parsing to just consume a block (and report good error messages)
+	block <- parseBlock
+	return $ StatementLet letToken block
 
 parseStatement :: Parse Statement
 parseStatement = do
