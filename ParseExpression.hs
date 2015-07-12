@@ -14,6 +14,7 @@ data Expression
 	| ExpressionCall Expression [Expression]
 	| ExpressionFunc { arguments :: [(Token, Type)], funcBang :: Maybe Token, returnType :: Maybe Type , body :: [Statement] }
 	| ExpressionOp Expression Token Expression
+	| ExpressionPrefix Token Expression
 	deriving Show
 
 parseIdentifier :: Parse Expression
@@ -99,25 +100,39 @@ opFlip (OpLeaf a) = OpLeaf a
 opFlip (OpBranch left op (OpBranch middle op' right)) = opFlip $ OpBranch (OpBranch left op middle) op' right
 opFlip (OpBranch left op right) = OpBranch left op $ opFlip right
 
-parseOperators :: [(Bool, [String])] -> Parse Expression
+data OpAssociativity = OpLeft | OpRight | OpNone | OpPrefix
+
+
+parseOperators :: [(OpAssociativity, [String])] -> Parse Expression
 parseOperators [] = parseCall
-parseOperators ((dir, ops) : rest) = return . opReplace id ExpressionOp =<< fmap flipper (parseOp ops (parseOperators rest)) where
-	flipper = case dir of
-		True -> id
-		False -> opFlip
+parseOperators ((dir, ops) : rest) = case dir of
+		OpNone -> parseOperators ((OpRight, ops) : rest) -- TODO: make it an error to mix these
+		OpPrefix -> do
+			token <- lookOperators ops
+			case token of
+				Nothing -> parseOperators rest
+				Just t -> do
+					operand <- parseOperators ((dir, ops) : rest)
+					return $ ExpressionPrefix t operand
+		_ -> return . opReplace id ExpressionOp =<< fmap (flipper dir) (parseOp ops (parseOperators rest)) where
+	where
+	flipper dir = case dir of
+		OpRight -> id
+		OpLeft -> opFlip
 
 parseExpression :: Parse Expression
 parseExpression = parseOperators
-	[ (True, ["$"])
-	, (False, [">>", ">>="])
-	, (False, ["<<", "=<<"])
-	, (False, ["."])
-	, (False, ["||"])
-	, (False, ["&&"])
-	, (False, ["==","<",">","<=",">=","/="])
-	, (True, ["++"])
-	, (False, ["+", "-"])
-	, (False, ["*", "/", "%"])
+	[ (OpRight, ["$"])
+	, (OpRight, [">>", ">>="])
+	, (OpLeft, ["<<", "=<<"])
+	, (OpLeft, ["."])
+	, (OpRight, ["||"])
+	, (OpRight, ["&&"])
+	, (OpNone, ["==","<",">","<=",">=","/="])
+	, (OpRight, ["++"])
+	, (OpLeft, ["+", "-"])
+	, (OpLeft, ["*", "/", "%"])
+	, (OpPrefix, ["-"])
 	]
 
 data Statement
