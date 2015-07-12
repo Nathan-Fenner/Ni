@@ -1,5 +1,5 @@
 
-module ParseExpression where
+module Expression where
 
 import Lex
 import Parse
@@ -12,7 +12,7 @@ data Expression
 	| ExpressionStringLiteral Token
 	| ExpressionBang Token
 	| ExpressionCall Expression [Expression]
-	| ExpressionFunc { arguments :: [(Token, Type)], funcBang :: Maybe Token, returnType :: Maybe Type , body :: [Statement] }
+	| ExpressionFunc { anonFuncToken :: Token, arguments :: [(Token, Type)], funcBang :: Maybe Token, returnType :: Maybe Type , body :: [Statement] }
 	| ExpressionOp Expression Token Expression
 	| ExpressionPrefix Token Expression
 	deriving Show
@@ -67,12 +67,12 @@ parseFuncArg = do
 
 parseFunc :: Parse Expression
 parseFunc = do
-	expectSpecial "func" "func begins function declaration"
+	funcToken <- expectSpecial "func" "func begins function declaration"
 	funcArgs <- parseManyUntil (peekTokenName ":" ||| peekTokenName "{" ||| peekTokenName "!") parseFuncArg
 	bang <- maybeCheckTokenName "!"
 	returnType <- parseMaybe (expectSpecial ":" "(optional) return type" >> parseType)
 	body <- parseBlock
-	return $ ExpressionFunc funcArgs bang returnType body
+	return $ ExpressionFunc funcToken funcArgs bang returnType body
 
 data Op a = OpLeaf a | OpBranch (Op a) Token (Op a) deriving Show
 
@@ -140,13 +140,13 @@ data Statement
 	| StatementVarVoid Token Type
 	| StatementVarAssign Token Type Expression
 	| StatementDo Expression
-	| StatementIf Expression [Statement]
-	| StatementIfElse Expression [Statement] [Statement]
-	| StatementWhile Expression [Statement]
+	| StatementIf Token Expression [Statement]
+	| StatementIfElse Token Expression [Statement] [Statement]
+	| StatementWhile Token Expression [Statement]
 	| StatementReturn Token (Maybe Expression)
 	| StatementBreak Token
 	| StatementLet Token [Statement]
-	| StatementFunc { funcName :: Token, argumentsStatement :: [(Token, Type)], funcBangStatement :: Maybe Token, returnTypeStatement :: Maybe Type , bodyStatement :: [Statement] }
+	| StatementFunc { funcToken :: Token, funcName :: Token, argumentsStatement :: [(Token, Type)], funcBangStatement :: Maybe Token, returnTypeStatement :: Maybe Type , bodyStatement :: [Statement] }
 	deriving Show
 
 parseAssign :: Parse Statement
@@ -175,19 +175,19 @@ parseDo = do
 
 parseIf :: Parse Statement
 parseIf = do
-	expectSpecial "if" "expected `if` to begin if-statement"
+	ifToken <- expectSpecial "if" "expected `if` to begin if-statement"
 	condition <- parseExpression
 	thenBlock <- parseBlock
 	checkTokenName "else" ??? (do
 		elseBlock <- parseBlock
-		return $ StatementIfElse condition thenBlock elseBlock, return $ StatementIf condition thenBlock)
+		return $ StatementIfElse ifToken condition thenBlock elseBlock, return $ StatementIf ifToken condition thenBlock)
 
 parseWhile :: Parse Statement
 parseWhile = do
-	expectSpecial "while" "expected `while` to begin while-statement"
+	whileToken <- expectSpecial "while" "expected `while` to begin while-statement"
 	condition <- parseExpression
 	body <- parseBlock
-	return $ StatementWhile condition body
+	return $ StatementWhile whileToken condition body
 
 parseReturn :: Parse Statement
 parseReturn = do
@@ -212,13 +212,13 @@ parseLet = do
 
 parseFuncDef :: Parse Statement
 parseFuncDef = do
-	expectSpecial "func" "expected `func` to begin function declaration"
+	funcToken <- expectSpecial "func" "expected `func` to begin function declaration"
 	funcName <- expectIdentifier "expected function name to follow `func` keyword"
 	funcArgs <- parseManyUntil (peekTokenName ":" ||| peekTokenName "{" ||| peekTokenName "!") parseFuncArg
 	bang <- maybeCheckTokenName "!"
 	returnType <- parseMaybe (expectSpecial ":" "(optional) return type" >> parseType)
 	body <- parseBlock
-	return $ StatementFunc funcName funcArgs bang returnType body
+	return $ StatementFunc funcToken funcName funcArgs bang returnType body
 
 parseStatement :: Parse Statement
 parseStatement = do
