@@ -58,11 +58,11 @@ parseCall = do
 
 parseFuncArg :: Parse (Token, Type)
 parseFuncArg = do
-	expectSpecial "(" "to open argument"
+	expectSpecial "(" "expected `(` to open argument"
 	argName <- expectIdentifier "argument name"
-	expectSpecial ":" "colon for type indicator"
+	expectSpecial ":" "expected `:` for type indicator"
 	argType <- parseTypeAtom
-	expectSpecial ")" "to close corresponding `(`"
+	expectSpecial ")" "expected `)` to close corresponding `(`"
 	return (argName, argType)
 
 parseFunc :: Parse Expression
@@ -152,9 +152,9 @@ data Statement
 parseAssign :: Parse Statement
 parseAssign = do
 	name <- expectIdentifier "expected name to begin assignment"
-	expectSpecial "=" "assignment operator `=` to follow variable name"
+	expectSpecial "=" "expected assignment operator `=` to follow variable name"
 	right <- parseExpression
-	expectSpecial ";" "semicolon should terminate statement"
+	expectSpecial ";" "expected `;` to terminate statement"
 	return $ StatementAssign name right
 
 parseVar :: Parse Statement
@@ -164,7 +164,7 @@ parseVar = do
 	expectSpecial ":" "expected `:` to declare variable type after `var`"
 	varType <- parseType
 	result <- checkTokenName "=" ??? ( parseExpression >>= return . StatementVarAssign name varType, return $ StatementVarVoid name varType)
-	expectSpecial ";" "semicolon should terminate var declaration"
+	expectSpecial ";" "expected `;` to terminate var declaration"
 	return result
 
 parseDo :: Parse Statement
@@ -210,11 +210,17 @@ parseLet = do
 	block <- parseBlock
 	return $ StatementLet letToken block
 
+(^||) :: Monad m => m Bool -> m Bool -> m Bool
+x ^|| y = do
+	x' <- x
+	y' <- y
+	return $ x' || y'
+
 parseFuncDef :: Parse Statement
 parseFuncDef = do
 	funcToken <- expectSpecial "func" "expected `func` to begin function declaration"
 	funcName <- expectIdentifier "expected function name to follow `func` keyword"
-	funcArgs <- parseManyUntil (peekTokenName ":" ||| peekTokenName "{" ||| peekTokenName "!") parseFuncArg
+	funcArgs <- parseManyUntil (peekTokenName ":" ^|| peekTokenName "{" ^|| peekTokenName "!") parseFuncArg
 	bang <- maybeCheckTokenName "!"
 	returnType <- parseMaybe (expectSpecial ":" "(optional) return type" >> parseType)
 	body <- parseBlock

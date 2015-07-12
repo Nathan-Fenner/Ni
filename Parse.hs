@@ -83,7 +83,7 @@ expectIdentifier :: String -> Parse Token
 expectIdentifier msg = expectToken (\t -> kind t == Identifier) ("expected identifier: " ++ msg)
 
 expectSpecial :: String -> String -> Parse Token
-expectSpecial name msg = expectToken (\t -> kind t == Special && token t == name) ("expected special: " ++ msg)
+expectSpecial name msg = expectToken (\t -> kind t == Special && token t == name) msg
 
 peekToken :: (Token -> Bool) -> Parse Bool
 peekToken f = Parse $ \(_, ts) -> case ts of
