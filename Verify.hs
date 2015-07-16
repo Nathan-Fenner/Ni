@@ -132,16 +132,58 @@ mustReturn (Scope r _) = r
 setReturn :: Scope -> Type -> Scope
 setReturn (Scope _ ts) r = Scope r ts
 
-{-
-data Statement
-	| StatementLet Token [Statement]
-	deriving Show
--}
-
 x &&&>>> (a, b) = (x &&& a, b)
 (x, _) .&&&>>> (a, b) = (x &&& a, b)
 
+{-
+data Expression
+	| ExpressionBang Token ???
+	| ExpressionCall Expression [Expression]
+	| ExpressionFunc { anonFuncToken :: Token, arguments :: [(Token, Type)], funcBang :: Maybe Token, returnType :: Maybe Type , body :: [Statement] }
+	| ExpressionOp Expression Token Expression
+	| ExpressionPrefix Token Expression
+	deriving Show
+-}
+
+
+getExpressionType :: Scope -> Expression -> Either Verify Type
+getExpressionType scope (ExpressionIdentifier name) = case getType name scope of
+	Nothing -> Left $ Failure [(name, "variable `" ++ token name ++ "` has not been declared or is not in scope")]
+	Just t -> Right t
+getExpressionType scope (ExpressionIntegerLiteral{}) = Right $ makeType "Int"
+getExpressionType scope (ExpressionDecimalLiteral{}) = Right $ makeType "Float"
+getExpressionType scope (ExpressionStringLiteral{}) = Right $ makeType "String"
+getExpressionType scope (ExpressionCall fun args) = case funType of
+	Left f -> Left f
+	Right funType' -> matchFuncType funType' argTypes
+	where
+	funType :: Either Verify Type
+	funType = getExpressionType scope fun
+	argTypes :: [(Expression, Either Verify Type)]
+	argTypes = zip args $ map (getExpressionType scope) args
+	matchFuncType :: Type -> [(Expression, Either Verify Type)] -> Either Verify Type
+	matchFuncType t [] = Right $ t
+	matchFuncType (TypeArrow left right) ((arg, argType) : rest) = case argType of
+		Left f -> Left f
+		Right argType' -> case argType' === left of
+			True -> matchFuncType right rest
+			False -> Left $ Failure [(expressionAt arg, "expected type " ++ show left ++ " but expression " ++ show arg ++ " with type " ++ show argType' ++ " was applied instead")]
+
 verifyExpressionTypeIs :: Scope -> Expression -> Type -> Verify
+verifyExpressionTypeIs scope (ExpressionIdentifier name) expected = case getType name scope of
+	Nothing -> Failure [(name, "variable `" ++ token name ++ "` has not been declared or is not in scope")]
+	Just t -> if t === expected then Success else Failure [(name, "variable `" ++ token name ++ "` has type " ++ show t ++ " but type " ++ show expected ++ " was expected")]
+verifyExpressionTypeIs scope (ExpressionIntegerLiteral int) expected = case expected === makeType "Int" of
+	True -> Success
+	False -> Failure [(int, "integer `" ++ show int ++ "` has type Int but " ++ show expected ++ " was expected")]
+verifyExpressionTypeIs scope (ExpressionDecimalLiteral float) expected = case expected === makeType "Float" of
+	True -> Success
+	False -> Failure [(float, "float `" ++ show float ++ "` has type Float but " ++ show expected ++ " was expected")]
+verifyExpressionTypeIs scope (ExpressionStringLiteral string) expected = case expected === makeType "String" of
+	True -> Success
+	False -> Failure [(string, "string `" ++ show string ++ "` has type String but " ++ show expected ++ " was expected")]
+verifyExpressionTypeIs scope (ExpressionBang bang) expected = Failure [(bang, "found bang `!` where type " ++ show expected ++ " was expected")]
+verifyExpressionTypeIs scope (ExpressionCall left []) expected = verifyExpressionTypeIs scope left expected
 
 verifyExpressionTypeIs scope expression expected = error "unimplemented expression type"
 

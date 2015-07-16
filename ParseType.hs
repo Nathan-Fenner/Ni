@@ -18,6 +18,13 @@ TypeBangArrow a === TypeBangArrow b = a === b
 TypeArrow a b === TypeArrow a' b' = a === a' && b === b'
 _ === _ = False
 
+makeType :: String -> Type
+makeType name = TypeName (Token name (FileEnd "*") Identifier)
+
+curryList :: Type -> ([Type], Type)
+curryList (TypeArrow left arg) = let (args, r) = curryList arg in (left:args, r)
+curryList t = ([], t)
+
 parseTypeName :: Parse Type
 parseTypeName = fmap TypeName (expectIdentifier "type name")
 
