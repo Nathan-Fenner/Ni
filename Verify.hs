@@ -179,8 +179,16 @@ verifyStatementType scope (StatementFunc funcToken funcName arguments bang retur
 	funcType' [t] = t
 	funcType' (t:ts) = TypeArrow t (funcType' ts)
 verifyStatementType scope (StatementBreak _) = (Success, scope)
-verifyStatementType scope (StatementLet _ body) = error "unimplemented let-statements"
-verifyStatementType scope statement = error $ "Statement type not implemented: " ++ show statement
+verifyStatementType scope (StatementLet _ body) = verifyBlockType (addTypes newVars scope) body
+	where
+	newVars = onlyJust $ map varForm body
+	varForm (StatementVarVoid varName varType) = Just (varName, varType)
+	varForm (StatementVarAssign varName varType _) = Just (varName, varType)
+	varForm _ = Nothing
+	onlyJust [] = []
+	onlyJust (Just x : xs) = x : onlyJust xs
+	onlyJust (_ : xs) = onlyJust xs
+-- verifyStatementType scope statement = error $ "Statement type not implemented: " ++ show statement
 
 verifyBlockType :: Scope -> [Statement] -> (Verify, Scope)
 verifyBlockType scope (statement : rest) = let (state, scope') = verifyStatementType scope statement in state &&&>>> verifyBlockType scope' rest
