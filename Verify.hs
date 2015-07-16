@@ -137,9 +137,6 @@ x &&&>>> (a, b) = (x &&& a, b)
 
 {-
 data Expression
-	| ExpressionBang Token ???
-	| ExpressionCall Expression [Expression]
-	| ExpressionFunc { anonFuncToken :: Token, arguments :: [(Token, Type)], funcBang :: Maybe Token, returnType :: Maybe Type , body :: [Statement] }
 	| ExpressionOp Expression Token Expression
 	| ExpressionPrefix Token Expression
 	deriving Show
@@ -163,11 +160,17 @@ getExpressionType scope (ExpressionCall fun args) = case funType of
 	argTypes = zip args $ map (getExpressionType scope) args
 	matchFuncType :: Type -> [(Expression, Either Verify Type)] -> Either Verify Type
 	matchFuncType t [] = Right $ t
+	matchFuncType (TypeBangArrow right) ((ExpressionBang{}, _) : rest) = matchFuncType right rest
+	matchFuncType (TypeBangArrow _) ((arg, argType) : _) = Left $ Failure [(expressionAt arg, "expected bang `!` but got expression " ++ show arg)]
+	matchFuncType (TypeArrow left _) ((ExpressionBang bang, _) : rest) = Left $ Failure [(bang, "was expecting an argument of type " ++ show left ++ ", not a bang `!`")]
 	matchFuncType (TypeArrow left right) ((arg, argType) : rest) = case argType of
 		Left f -> Left f
 		Right argType' -> case argType' === left of
 			True -> matchFuncType right rest
 			False -> Left $ Failure [(expressionAt arg, "expected type " ++ show left ++ " but expression " ++ show arg ++ " with type " ++ show argType' ++ " was applied instead")]
+getExpressionType scope (ExpressionBang bang) = Left $ Failure [(bang, "a lone bang `!` is not a valid expression")]
+getExpressionType (ExpressionFunc funcToken args bang returns body) = undefined -- TODO: verify body + build function type
+
 
 verifyExpressionTypeIs :: Scope -> Expression -> Type -> Verify
 verifyExpressionTypeIs scope (ExpressionIdentifier name) expected = case getType name scope of
