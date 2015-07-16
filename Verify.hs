@@ -2,6 +2,7 @@
 module Verify(verifyAll, Verify(Success, Failure)) where
 
 import Expression
+import ParseType
 import Lex
 
 data Verify = Success | Failure [(Token, String)]
@@ -110,3 +111,78 @@ letVerifier _ = Success -- skip over all non-let statements
 
 verifyAll :: Either Expression Statement -> Verify
 verifyAll = levels (const Success) letVerifier
+
+data Scope = Scope Type {- return type -} [(Token, Type)] {- stack & globals -} deriving Show
+
+getType :: Token -> Scope -> Maybe Type
+getType name (Scope _ scope) = case filter (\(n, t) -> token n == token name) scope of
+	[] -> Nothing
+	((_, t):_) -> Just t
+
+addType :: Token -> Type -> Scope -> Scope
+addType varName varType (Scope returns scope) = Scope returns $ (varName, varType) : scope
+
+addTypes :: [(Token, Type)] -> Scope -> Scope
+addTypes [] scope = scope
+addTypes ((n, t) : rest) scope = addTypes rest $ addType n t scope
+
+mustReturn :: Scope -> Type
+mustReturn (Scope r _) = r
+
+setReturn :: Scope -> Type -> Scope
+setReturn (Scope _ ts) r = Scope r ts
+
+{-
+data Statement
+	| StatementLet Token [Statement]
+	deriving Show
+-}
+
+x &&&>>> (a, b) = (x &&& a, b)
+(x, _) .&&&>>> (a, b) = (x &&& a, b)
+
+verifyExpressionTypeIs :: Scope -> Expression -> Type -> Verify
+
+verifyExpressionTypeIs scope expression expected = error "unimplemented expression type"
+
+verifyExpressionTypeConsistent :: Scope -> Expression -> Verify
+verifyExpressionTypeConsistent scope expression = error "unimplemented expression type (consistency)"
+
+verifyStatementType :: Scope -> Statement -> (Verify, Scope)
+verifyStatementType scope (StatementVarVoid nameToken varType) = (Success, addType nameToken varType scope)
+verifyStatementType scope (StatementAssign nameToken value) = (case getType nameToken scope of
+	Nothing -> Failure $ [(nameToken, "variable has not been declared or is not in scope")]
+	Just t -> verifyExpressionTypeIs scope value t, scope)
+verifyStatementType scope (StatementVarAssign nameToken varType value) = (verifyExpressionTypeIs scope value varType, addType nameToken varType scope)
+verifyStatementType scope (StatementDo expression) = (verifyExpressionTypeConsistent scope expression, scope)
+verifyStatementType scope (StatementIf _ condition body)
+	= verifyExpressionTypeIs scope condition (TypeName $ Token "Bool" (FileEnd "*") Identifier)
+	&&&>>> verifyBlockType scope body
+verifyStatementType scope (StatementIfElse _ condition body elseBody)
+	= verifyExpressionTypeIs scope condition (TypeName $ Token "Bool" (FileEnd "*") Identifier)
+	&&&>>> verifyBlockType scope body
+	.&&&>>> verifyBlockType scope elseBody
+verifyStatementType scope (StatementWhile _ condition body)
+	= verifyExpressionTypeIs scope condition (TypeName $ Token "Bool" (FileEnd "*") Identifier)
+	&&&>>> verifyBlockType scope body
+verifyStatementType scope (StatementReturn returnToken Nothing) = case mustReturn scope of
+	TypeName (Token "Void" _ _) -> (Success, scope)
+	t -> (Failure [(returnToken, "expected to return type " ++ show (mustReturn scope) ++ " but returned nothing")], scope)
+verifyStatementType scope (StatementReturn returnToken (Just expected)) = 
+	(verifyExpressionTypeIs scope expected (mustReturn scope), scope)
+verifyStatementType scope (StatementFunc funcToken funcName arguments bang returns body) = (checked, newScope)
+	where
+	(checked, _) = verifyBlockType (addTypes arguments $ setReturn newScope inferReturns) body
+	newScope = addType funcName funcType scope
+	inferReturns = case returns of Nothing -> TypeName (Token "Void" (FileEnd "*") Identifier); Just t -> t
+	funcType = funcType' (map snd arguments ++ [inferReturns])
+	funcType' [t] = t
+	funcType' (t:ts) = TypeArrow t (funcType' ts)
+verifyStatementType scope (StatementBreak _) = (Success, scope)
+verifyStatementType scope (StatementLet _ body) = error "unimplemented let-statements"
+verifyStatementType scope statement = error $ "Statement type not implemented: " ++ show statement
+
+verifyBlockType :: Scope -> [Statement] -> (Verify, Scope)
+verifyBlockType scope (statement : rest) = let (state, scope') = verifyStatementType scope statement in state &&&>>> verifyBlockType scope' rest
+verifyBlockType scope [] = (Success, scope)
+

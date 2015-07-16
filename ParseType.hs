@@ -11,6 +11,13 @@ data Type
 	| TypeArrow Type Type
 	deriving Show
 
+(===) :: Type -> Type -> Bool
+TypeName a === TypeName b = token a == token b
+TypeCall f fArgs === TypeCall g gArgs = f === g && length fArgs == length gArgs && and (zipWith (===) fArgs gArgs)
+TypeBangArrow a === TypeBangArrow b = a === b
+TypeArrow a b === TypeArrow a' b' = a === a' && b === b'
+_ === _ = False
+
 parseTypeName :: Parse Type
 parseTypeName = fmap TypeName (expectIdentifier "type name")
 
