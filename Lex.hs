@@ -12,6 +12,10 @@ data Location
 	| FileEnd FilePath
 	deriving Show
 
+pretty :: Location -> String
+pretty (Location f l c) = f ++ "/" ++ show l ++ ":" ++ show c
+pretty (FileEnd f) = f ++ "/end"
+
 data Map from to = Map [(from, to)]
 
 from :: Eq from => Map from to -> from -> Maybe to

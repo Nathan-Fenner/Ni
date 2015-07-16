@@ -1,5 +1,5 @@
 
-module Verify(verifyAll, Verify) where
+module Verify(verifyAll, Verify(Success, Failure)) where
 
 import Expression
 import Lex
