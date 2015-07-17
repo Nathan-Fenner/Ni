@@ -104,13 +104,16 @@ getExpressionType scope (ExpressionCall fun args) = do
 		matchFuncType right rest
 getExpressionType scope (ExpressionBang bang) = flunk bang "a bang `!` outside of a matching function call is not allowed"
 getExpressionType scope (ExpressionFunc funcToken args bang returns body) = do
-	-- TODO: check the body (after bringing the arguments into scope)
+	let scopeBody = setReturn returnType $ addTypes args scope
+	_ <- verifyStatementBlock scopeBody body
 	Pass funcType
 	where
-	funcType = go (map snd args) returns where
-		go [] Nothing = makeType "Void"
-		go [] (Just r) = r
-		go (t : ts) r = t `TypeArrow` go ts r
+	returnType = case returns of
+		Nothing -> makeType "Void"
+		Just t -> t
+	funcType = go (map snd args) where
+		go [] = returnType
+		go (t : ts) = t `TypeArrow` go ts
 getExpressionType scope (ExpressionOp left op right) = do
 	leftType <- getExpressionType scope left
 	rightType <- getExpressionType scope right
