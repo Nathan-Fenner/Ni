@@ -1,0 +1,6 @@
+Parse.o
+*.hi
+main.o
+*.o
+main.exe
+out.js

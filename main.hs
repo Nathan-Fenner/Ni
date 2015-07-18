@@ -3,13 +3,16 @@ import Parse
 import Lex
 import qualified Verify
 import Expression
+import Compile
 
 succeedParse tree = do
-	case Verify.verifyAll (Right tree) of
-		Verify.Success -> putStrLn "Program is correct."
-		Verify.Failure messages -> mapM_ describeFailure messages
+	case Verify.verifyProgram tree of
+		Verify.Pass () -> do
+			putStrLn "Program is correct."
+			writeFile "out.js" $ compileProgram tree
+		Verify.Flunk messages -> mapM_ describeFailure messages
 
-describeFailure (t, message) = do
+describeFailure (Verify.Message t message) = do
 	putStrLn $ "error: " ++ message
 	putStrLn $ "at " ++ pretty (at t) ++ " (token `" ++ token t ++ "`)"
 
@@ -22,8 +25,8 @@ failParse message rest location = do
 
 main = do
 	example <- readFile "example.ni"
-	let exampleLedex = lexer example "example.ni"
-	let exampleParsed = run parseStatement ("example.ni", exampleLedex)
+	let exampleLexed = lexer example "example.ni"
+	let exampleParsed = run parseStatement ("example.ni", exampleLexed)
 	case exampleParsed of
 		Success tree [] -> succeedParse tree
 		Error message rest location -> failParse message rest location

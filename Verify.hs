@@ -124,6 +124,7 @@ getExpressionType scope (ExpressionOp left op right) = do
 	triple t = (makeType t, makeType t, makeType t)
 	arithmetic = triple "Int"
 	boolean = triple "Bool"
+	compares = (makeType "Int", makeType "Int", makeType "Bool")
 	(leftExpect, rightExpect, returns) = case token op of
 		"+" -> arithmetic
 		"-" -> arithmetic
@@ -133,6 +134,12 @@ getExpressionType scope (ExpressionOp left op right) = do
 		"&&" -> boolean
 		"||" -> boolean
 		"++" -> triple "String"
+		"==" -> compares
+		"/=" -> compares
+		"<=" -> compares
+		">=" -> compares
+		"<" -> compares
+		">" -> compares
 		_ -> error $ "compiler error: undefined infix operator `" ++ token op ++ "` (please contact the repository owner at github.com/Nathan-Fenner/Ni)"
 getExpressionType scope (ExpressionPrefix op arg) = do
 	argType <- getExpressionType scope arg
@@ -219,3 +226,10 @@ verifyStatementBlock scope [] = return scope
 verifyStatementBlock scope (s : ss) = do
 	scope' <- verifyStatementType scope s
 	verifyStatementBlock scope' ss
+
+topScope :: Scope
+topScope =
+	Scope (makeType "Void") [(Token "print" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` TypeBangArrow (makeType "Void"))]
+
+verifyProgram :: Statement -> Check ()
+verifyProgram program = verifyStatementType topScope program >> return ()
