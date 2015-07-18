@@ -8,7 +8,6 @@ import Data.List(intercalate, sort)
 import Control.Applicative
 import Expression
 import Lex
-import ParseType
 
 -- Don't inline it, so that we read the file at most once.
 {-# NOINLINE preludeSource #-}
@@ -20,7 +19,7 @@ newtype FunctionID = FunctionID Int deriving (Show, Eq)
 data IDGenerator = IDGenerator{next :: (FunctionID, IDGenerator)}
 
 nextN :: Int -> IDGenerator -> ([FunctionID], IDGenerator)
-nextN count gen = go count [] gen where
+nextN count givenGen = go count [] givenGen where
 	go 0 result gen = (result, gen)
 	go n result gen = go (n-1) (fid : result) gen' where
 		(fid, gen') = next gen
@@ -98,7 +97,7 @@ containedVariables (ExpressionOp left _ right) = nub' $ containedVariables left 
 containedVariables (ExpressionPrefix _ arg) = containedVariables arg
 
 containedVariables' :: [Statement] -> [String]
-containedVariables' (StatementAssign _ value : ss) = containedVariables value
+containedVariables' (StatementAssign _ value : ss) = nub' $ containedVariables value ++ containedVariables' ss
 containedVariables' (StatementVarVoid name _ : ss) = containedVariables' ss `less` [token name]
 containedVariables' (StatementVarAssign name _ value : ss) = (containedVariables value ++ containedVariables' ss) `less` [token name]
 containedVariables' (StatementDo e : ss) = nub' $ containedVariables e ++ containedVariables' ss
@@ -117,7 +116,7 @@ containedVariables' (StatementLet _ body : ss) =
 		++ [ token name | StatementVarAssign name _ _ <- body ]
 		++ [ token funcName | StatementFunc{ funcName } <- body ]
 containedVariables' (StatementFunc{ funcName, argumentsStatement, bodyStatement } : ss) =
-	(nub' $ containedVariables' bodyStatement) `less` ( token funcName : map (token . fst) argumentsStatement)
+	(nub' $ containedVariables' bodyStatement ++ containedVariables' ss) `less` ( token funcName : map (token . fst) argumentsStatement)
 -- containedVariables' (s : _) = error $ show s
 containedVariables' [] = []
 
@@ -199,12 +198,12 @@ compileStatement gen (StatementLet _ body) = do
 	getValue :: Statement -> Expression
 	getValue (StatementAssign _ value) = value
 	getValue (StatementVarAssign _ _ value) = value
-	getValue StatementFunc{ funcToken, funcName, argumentsStatement, funcBangStatement, returnTypeStatement, bodyStatement }
+	getValue StatementFunc{ funcToken, argumentsStatement, funcBangStatement, returnTypeStatement, bodyStatement }
 		= ExpressionFunc funcToken argumentsStatement funcBangStatement returnTypeStatement bodyStatement
 	getValue s = error $ "programming error: invalid statement type present in let-block: " ++ show s
 	wrapValue :: Expression -> Expression
 	wrapValue value = ExpressionFunc (Token "func" (FileEnd "*") Special) [] Nothing Nothing [ StatementReturn (Token "return" (FileEnd "*") Special) (Just value) ]	
-compileStatement gen s@StatementFunc{ funcToken, funcName, argumentsStatement, funcBangStatement, returnTypeStatement, bodyStatement }
+compileStatement gen StatementFunc{ funcToken, funcName, argumentsStatement, funcBangStatement, returnTypeStatement, bodyStatement }
 	= compileStatement gen $
 		StatementLet (Token "let" (FileEnd "*") Special) [
 			StatementVarAssign funcName (error "TODO: ?") $
@@ -234,7 +233,7 @@ compileExpression gen e@ExpressionFunc{arguments, funcBang, body} = do
 	(gen'', sbody) <- compileStatements gen' body
 	let extraArguments = containedVariables e
 	let allArguments = extraArguments ++ map (token . fst) arguments
-	let extractArguments = concat $ map (\(arg, i) -> "var " ++ arg ++ " = _ni_args[" ++ show i ++ "];\n") $ zip allArguments [0..]
+	let extractArguments = concat $ map (\(arg, i) -> "var " ++ arg ++ " = _ni_args[" ++ show i ++ "];\n") $ zip allArguments [0 :: Int ..]
 	let cargs = "[" ++ intercalate ", " extraArguments ++ "]"
 	let n = length allArguments + if isNothing funcBang then 0 else 1
 	addFunction fid $ "{nargs: " ++ show n ++ ", fun:\nfunction(_ni_args) {\n" ++ extractArguments ++ sbody ++ "}\n}"

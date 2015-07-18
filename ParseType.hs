@@ -30,9 +30,9 @@ parseTypeName = fmap TypeName (expectIdentifier "type name")
 
 parseTypeParens :: Parse Type
 parseTypeParens = do
-	expectSpecial "(" "open paren"
+	_ <- expectSpecial "(" "open paren"
 	t <- parseType
-	expectSpecial ")" "expected `)` to close `(`"
+	_ <- expectSpecial ")" "expected `)` to close `(`" -- TODO: add location of matching paren
 	return t
 
 parseTypeAtom :: Parse Type
@@ -48,8 +48,8 @@ parseTypeCall = do
 
 parseTypeArrowBang :: Parse Type
 parseTypeArrowBang = do
-	expectSpecial "!" "type bang"
-	expectSpecial "->" "arrow to follow bang type"
+	_ <- expectSpecial "!" "type bang"
+	_ <- expectSpecial "->" "arrow to follow bang type"
 	right <- parseTypeArrow
 	return $ TypeBangArrow right
 

@@ -31,9 +31,9 @@ parseStringLiteral = fmap ExpressionStringLiteral (expectToken (\t -> kind t == 
 
 parseParens :: Parse Expression
 parseParens = do
-	expectSpecial "(" "open paren"
+	_ <- expectSpecial "(" "open paren"
 	e <- parseExpression
-	expectSpecial ")" "expected `)` to match `(`"
+	_ <- expectSpecial ")" "expected `)` to match `(`" -- TODO: add location of matching paren
 	return e
 
 parseAtom :: Parse Expression
@@ -58,21 +58,21 @@ parseCall = do
 
 parseFuncArg :: Parse (Token, Type)
 parseFuncArg = do
-	expectSpecial "(" "expected `(` to open argument"
+	_ <- expectSpecial "(" "expected `(` to open argument"
 	argName <- expectIdentifier "argument name"
-	expectSpecial ":" "expected `:` for type indicator"
+	_ <- expectSpecial ":" "expected `:` for type indicator"
 	argType <- parseTypeAtom
-	expectSpecial ")" "expected `)` to close corresponding `(`"
+	_ <- expectSpecial ")" "expected `)` to close corresponding `(`" -- TODO: location of matching paren
 	return (argName, argType)
 
 parseFunc :: Parse Expression
 parseFunc = do
-	funcToken <- expectSpecial "func" "func begins function declaration"
+	funcWord <- expectSpecial "func" "func begins function declaration"
 	funcArgs <- parseManyUntil (peekTokenName ":" ||| peekTokenName "{" ||| peekTokenName "!") parseFuncArg
 	bang <- maybeCheckTokenName "!"
-	returnType <- parseMaybe (expectSpecial ":" "(optional) return type" >> parseType)
-	body <- parseBlock
-	return $ ExpressionFunc funcToken funcArgs bang returnType body
+	returns <- parseMaybe (expectSpecial ":" "(optional) return type" >> parseType)
+	block <- parseBlock
+	return $ ExpressionFunc funcWord funcArgs bang returns block
 
 data Op a = OpLeaf a | OpBranch (Op a) Token (Op a) deriving Show
 
@@ -108,17 +108,16 @@ parseOperators [] = parseCall
 parseOperators ((dir, ops) : rest) = case dir of
 		OpNone -> parseOperators ((OpRight, ops) : rest) -- TODO: make it an error to mix these
 		OpPrefix -> do
-			token <- lookOperators ops
-			case token of
+			opToken <- lookOperators ops
+			case opToken of
 				Nothing -> parseOperators rest
 				Just t -> do
 					operand <- parseOperators ((dir, ops) : rest)
 					return $ ExpressionPrefix t operand
-		_ -> return . opReplace id ExpressionOp =<< fmap (flipper dir) (parseOp ops (parseOperators rest)) where
+		OpRight -> process id
+		OpLeft -> process opFlip
 	where
-	flipper dir = case dir of
-		OpRight -> id
-		OpLeft -> opFlip
+	process flipper = return . opReplace id ExpressionOp =<< fmap flipper (parseOp ops (parseOperators rest))
 
 parseExpression :: Parse Expression
 parseExpression = parseOperators
@@ -152,25 +151,25 @@ data Statement
 parseAssign :: Parse Statement
 parseAssign = do
 	name <- expectIdentifier "expected name to begin assignment"
-	expectSpecial "=" "expected assignment operator `=` to follow variable name"
+	_ <- expectSpecial "=" "expected assignment operator `=` to follow variable name"
 	right <- parseExpression
-	expectSpecial ";" "expected `;` to terminate statement"
+	_ <- expectSpecial ";" "expected `;` to terminate statement"
 	return $ StatementAssign name right
 
 parseVar :: Parse Statement
 parseVar = do
-	expectSpecial "var" "expected `var` to begin variable initialization"
+	_ <- expectSpecial "var" "expected `var` to begin variable initialization"
 	name <- expectIdentifier "expected name to appear in assignment"
-	expectSpecial ":" "expected `:` to declare variable type after `var`"
+	_ <- expectSpecial ":" "expected `:` to declare variable type after `var`"
 	varType <- parseType
 	result <- checkTokenName "=" ??? ( parseExpression >>= return . StatementVarAssign name varType, return $ StatementVarVoid name varType)
-	expectSpecial ";" "expected `;` to terminate var declaration"
+	_ <- expectSpecial ";" "expected `;` to terminate var declaration"
 	return result
 
 parseDo :: Parse Statement
 parseDo = do
 	expression <- parseExpression
-	expectSpecial ";" "expected `;` to follow expression performance"
+	_ <- expectSpecial ";" "expected `;` to follow expression performance"
 	return $ StatementDo expression
 
 parseIf :: Parse Statement
@@ -186,15 +185,15 @@ parseWhile :: Parse Statement
 parseWhile = do
 	whileToken <- expectSpecial "while" "expected `while` to begin while-statement"
 	condition <- parseExpression
-	body <- parseBlock
-	return $ StatementWhile whileToken condition body
+	block <- parseBlock
+	return $ StatementWhile whileToken condition block
 
 parseReturn :: Parse Statement
 parseReturn = do
 	returnToken <- expectSpecial "return" "expected `return` to begin return-statement"
 	checkTokenName ";" ??? (return $ StatementReturn returnToken Nothing, do
 		value <- parseExpression
-		expectSpecial ";" "expected `;` to follow return statement expression"
+		_ <- expectSpecial ";" "expected `;` to follow return statement expression"
 		return $ StatementReturn returnToken $ Just value)
 
 parseBreak :: Parse Statement
@@ -218,13 +217,13 @@ x ^|| y = do
 
 parseFuncDef :: Parse Statement
 parseFuncDef = do
-	funcToken <- expectSpecial "func" "expected `func` to begin function declaration"
-	funcName <- expectIdentifier "expected function name to follow `func` keyword"
+	funcWord <- expectSpecial "func" "expected `func` to begin function declaration"
+	name <- expectIdentifier "expected function name to follow `func` keyword"
 	funcArgs <- parseManyUntil (peekTokenName ":" ^|| peekTokenName "{" ^|| peekTokenName "!") parseFuncArg
 	bang <- maybeCheckTokenName "!"
-	returnType <- parseMaybe (expectSpecial ":" "(optional) return type" >> parseType)
-	body <- parseBlock
-	return $ StatementFunc funcToken funcName funcArgs bang returnType body
+	returns <- parseMaybe (expectSpecial ":" "(optional) return type" >> parseType)
+	block <- parseBlock
+	return $ StatementFunc funcWord name funcArgs bang returns block
 
 parseStatement :: Parse Statement
 parseStatement = do
@@ -242,7 +241,7 @@ parseStatement = do
 
 parseBlock :: Parse [Statement]
 parseBlock = do
-	expectSpecial "{" "expected `{` to open block"
-	body <- parseManyUntil (peekTokenName "}") parseStatement
-	expectSpecial "}" "expected `}` to close block"
-	return body
+	_ <- expectSpecial "{" "expected `{` to open block"
+	block <- parseManyUntil (peekTokenName "}") parseStatement
+	_ <- expectSpecial "}" "expected `}` to close block" -- TODO: add information about matching paren
+	return block

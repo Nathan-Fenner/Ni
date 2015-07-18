@@ -2,7 +2,7 @@
 module Verify where
 
 import Control.Applicative
-import Expression
+import Expression hiding(returnType, arguments, funcName, body)
 import ParseType
 import Lex
 
@@ -14,7 +14,7 @@ data Check a = Flunk [Message] | Pass a deriving Show
 
 instance Functor Check where
 	fmap f (Pass x) = Pass (f x)
-	fmap f (Flunk msg) = Flunk msg
+	fmap _ (Flunk msg) = Flunk msg
 
 instance Applicative Check where
 	pure x = Pass x
@@ -29,7 +29,7 @@ instance Monad Check where
 	Flunk m >>= _ = Flunk m
 
 flunk :: Token -> String -> Check any
-flunk token message = Flunk [Message token message]
+flunk atToken message = Flunk [Message atToken message]
 
 statementAt :: Statement -> Token
 statementAt (StatementAssign t _) = t
@@ -58,7 +58,7 @@ expressionAt (ExpressionPrefix op _) = op
 data Scope = Scope Type {- return type -} [(Token, Type)] {- stack & globals -} deriving Show
 
 getType :: Token -> Scope -> Maybe Type
-getType name (Scope _ scope) = case filter (\(n, t) -> token n == token name) scope of
+getType name (Scope _ scope) = case filter (\(n, _) -> token n == token name) scope of
 	[] -> Nothing
 	((_, t):_) -> Just t
 
@@ -76,17 +76,17 @@ setReturn :: Type -> Scope -> Scope
 setReturn r (Scope _ ts) = Scope r ts
 
 assertTypeEqual :: Type -> Type -> Token -> Check ()
-assertTypeEqual left right at
+assertTypeEqual left right atToken
 	|left === right = Pass ()
-	|otherwise = flunk at $ "got type `" ++ show left ++ "` but expected type `" ++ show right ++ "`"
+	|otherwise = flunk atToken $ "got type `" ++ show left ++ "` but expected type `" ++ show right ++ "`"
 
 getExpressionType :: Scope -> Expression -> Check Type
 getExpressionType scope (ExpressionIdentifier name) = case getType name scope of
 	Nothing -> flunk name $ "variable `" ++ token name ++ "` has not been declared or is not in scope"
 	Just t -> Pass t
-getExpressionType scope (ExpressionIntegerLiteral _) = Pass (makeType "Int")
-getExpressionType scope (ExpressionDecimalLiteral _) = Pass (makeType "Float")
-getExpressionType scope (ExpressionStringLiteral _) = Pass (makeType "String")
+getExpressionType _scope (ExpressionIntegerLiteral _) = Pass (makeType "Int")
+getExpressionType _scope (ExpressionDecimalLiteral _) = Pass (makeType "Float")
+getExpressionType _scope (ExpressionStringLiteral _) = Pass (makeType "String")
 getExpressionType scope (ExpressionCall fun args) = do
 	funType <- getExpressionType scope fun
 	matchFuncType funType args
@@ -96,14 +96,15 @@ getExpressionType scope (ExpressionCall fun args) = do
 	matchFuncType (TypeBangArrow right) (ExpressionBang{} : rest) = matchFuncType right rest
 	matchFuncType (TypeBangArrow _) (arg : _) = do
 		flunk (expressionAt arg) $ "expected bang `!` but got expression " ++ show arg
-	matchFuncType (TypeArrow left _) (ExpressionBang bang : rest) =
+	matchFuncType (TypeArrow left _) (ExpressionBang bang : _) =
 		flunk bang $ "was expecting an argument of type " ++ show left ++ ", not a bang `!`"
 	matchFuncType (TypeArrow left right) (arg : rest) = do
 		argType <- getExpressionType scope arg
 		assertTypeEqual argType left (expressionAt arg)
 		matchFuncType right rest
-getExpressionType scope (ExpressionBang bang) = flunk bang "a bang `!` outside of a matching function call is not allowed"
-getExpressionType scope (ExpressionFunc funcToken args bang returns body) = do
+	matchFuncType t (arg : _) = flunk (expressionAt arg) $ "got expression " ++ show arg ++ " applied to an argument when none were expected " ++ show t
+getExpressionType _scope (ExpressionBang bang) = flunk bang "a bang `!` outside of a matching function call is not allowed"
+getExpressionType scope (ExpressionFunc _funcToken args _bang returns body) = do
 	let scopeBody = setReturn returnType $ addTypes args scope
 	_ <- verifyStatementBlock scopeBody body
 	Pass funcType
@@ -169,30 +170,30 @@ verifyStatementType scope (StatementDo value) = do
 verifyStatementType scope (StatementIf _ condition body) = do
 	conditionType <- getExpressionType scope condition
 	assertTypeEqual (makeType "Bool") conditionType (expressionAt condition)
-	verifyStatementBlock scope body
+	_ <- verifyStatementBlock scope body
 	return scope
 verifyStatementType scope (StatementIfElse _ condition bodyThen bodyElse) = do
 	conditionType <- getExpressionType scope condition
 	assertTypeEqual (makeType "Bool") conditionType (expressionAt condition)
-	verifyStatementBlock scope bodyThen
-	verifyStatementBlock scope bodyElse
+	_ <- verifyStatementBlock scope bodyThen
+	_ <- verifyStatementBlock scope bodyElse
 	return scope
 verifyStatementType scope (StatementWhile _ condition body) = do
 	conditionType <- getExpressionType scope condition
 	assertTypeEqual (makeType "Bool") conditionType (expressionAt condition)
-	verifyStatementBlock scope body
+	_ <- verifyStatementBlock scope body
 	return scope
 verifyStatementType scope (StatementReturn returnToken Nothing) = do
 	assertTypeEqual (mustReturn scope) (makeType "Void") returnToken
 	return scope
-verifyStatementType scope (StatementReturn returnToken (Just value)) = do
+verifyStatementType scope (StatementReturn _returnToken (Just value)) = do
 	valueType <- getExpressionType scope value
 	assertTypeEqual (mustReturn scope) valueType (expressionAt value)
 	return scope
 verifyStatementType scope (StatementFunc _funcToken funcName arguments _bang returns body) = do
 	let scopeNew = addType funcName funcType scope
 	let scopeBody = setReturn returnType $ addTypes arguments scopeNew
-	verifyStatementBlock scopeBody body
+	_ <- verifyStatementBlock scopeBody body
 	return scopeNew
 	where
 	returnType = case returns of
@@ -209,9 +210,9 @@ verifyStatementType scope (StatementLet _ body) = do
 	_ <- mapM (verifyStatementType newScope) body
 	return newScope
 	where
-	verifyLet s@StatementAssign{} = Pass []
-	verifyLet s@(StatementVarAssign varName varType _) = Pass [(varName, varType)]
-	verifyLet s@(StatementFunc _funcToken funcName arguments _bang returns body) = Pass [(funcName, funcType)] where
+	verifyLet StatementAssign{} = Pass []
+	verifyLet (StatementVarAssign varName varType _) = Pass [(varName, varType)]
+	verifyLet (StatementFunc _funcToken funcName arguments _bang returns _body) = Pass [(funcName, funcType)] where
 		funcType = go (map snd arguments) where
 			go [] = returnType
 			go (t:ts) = t `TypeArrow` go ts

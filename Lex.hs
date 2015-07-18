@@ -1,8 +1,6 @@
    
 module Lex where
 
-import System.IO
-
 data Location
 	= Location
 	{ file   :: FilePath
@@ -26,15 +24,19 @@ from (Map t) n = case [y | (x, y) <- t, x == n] of
 
 newline :: Location -> Location
 newline (Location f l _) = Location f (l+1) 1
+newline l = l
 
 tab :: Location -> Location
 tab (Location f l c) = Location f l (((c-1) `div` 4 + 1) * 4 + 1)
+tab l = l
 
 carriageReturn :: Location -> Location
 carriageReturn (Location f l _) = (Location f l 1)
+carriageReturn l = l
 
 forward :: Int -> Location -> Location
 forward n (Location f l c) = Location f l (c+n)
+forward _ l = l
 
 space :: Location -> Location
 space = forward 1
@@ -56,57 +58,57 @@ data Token = Token
 	deriving Show
 
 lexer :: String -> String -> [Token]
-lexer code file = lex' code (Location file 1 1)
+lexer code filename = lex' code (Location filename 1 1)
 
 splitWhile :: (a -> Bool) -> [a] -> ([a], [a])
 splitWhile f string = splitWhile' f [] string
 
 splitWhile' :: (a -> Bool) -> [a] -> [a] -> ([a], [a])
-splitWhile' f before [] = (before, [])
+splitWhile' _ before [] = (before, [])
 splitWhile' f before (a:after)
 	|f a = splitWhile' f (before ++ [a]) after -- TODO: fix performance
 	|otherwise =  (before, a:after)
 
 lexString :: String -> String -> Location -> Location -> [Token]
 lexString [] _ _ _ = error "reached end of file while parsing string literal"
-lexString ('"' : rest) sofar start at = Token sofar start StringLiteral : lex' rest (space at)
+lexString ('"' : rest) sofar start loc = Token sofar start StringLiteral : lex' rest (space loc)
 lexString ('\n': _) _ _ _ = error "reached end of line while parsing string literal"
-lexString ('\\':c:rest) sofar start at = case from cMap c of
-	Just r -> lexString rest (sofar ++ r) start (forward 2 at)
+lexString ('\\':c:rest) sofar start loc = case from cMap c of
+	Just r -> lexString rest (sofar ++ r) start (forward 2 loc)
 	Nothing -> error "unknown escape character"
 	where
 	-- TODO: add more escaped characters
 	cMap = Map [('\\', "\\"), ('n', "\n"), ('"', "\""), ('t', "\t"), ('v', "\v"), ('r', "\r"), ('0', "\0")]
-lexString (c : rest) sofar start at = lexString rest (sofar ++ [c]) start (space at)
+lexString (c : rest) sofar start loc = lexString rest (sofar ++ [c]) start (space loc)
 
 -- TODO: support exponential floating notation
 lexNumber :: String -> Location -> [Token]
-lexNumber ns at = case rest of
+lexNumber ns loc = case rest of
 	('.' : more) -> let
-		(decimal, rest) = splitWhile (`elem` ['0'..'9']) more
-		literal = digits ++ "." ++ rest
+		(decimal, after) = splitWhile (`elem` ['0'..'9']) more
+		literal = digits ++ "." ++ decimal
 	 in
-		Token literal at DecimalLiteral : lex' more (forward (length literal) at)
-	_ -> Token digits at IntegerLiteral : lex' rest (forward (length digits) at)
+		Token literal loc DecimalLiteral : lex' after (forward (length literal) loc)
+	_ -> Token digits loc IntegerLiteral : lex' rest (forward (length digits) loc)
 	where
 	(digits, rest) = splitWhile (`elem` ['0'..'9']) ns
 
 lex' :: String -> Location -> [Token]
 lex' "" _ = []
-lex' (c:cs) at
+lex' (c:cs) loc
 	-- TODO: comments
-	|c == ' ' = lex' cs (space at)
+	|c == ' ' = lex' cs (space loc)
 	-- TODO: treat whitespace better
-	|c == '\r' = lex' cs (carriageReturn at)
-	|c == '\n' = lex' cs (newline at)
-	|c == '\t' = lex' cs (tab at)
-	|c `elem` ";{}()[].!" = Token [c] at Special : lex' cs (space at)
+	|c == '\r' = lex' cs (carriageReturn loc)
+	|c == '\n' = lex' cs (newline loc)
+	|c == '\t' = lex' cs (tab loc)
+	|c `elem` ";{}()[].!" = Token [c] loc Special : lex' cs (space loc)
 	|c `elem` ops = let (before, after) = splitWhile (`elem` ops) (c:cs) in
-		Token before at (if before `elem` specialOperators then Special else Operator) : lex' after (forward (length before) at)
+		Token before loc (if before `elem` specialOperators then Special else Operator) : lex' after (forward (length before) loc)
 	|c `elem` identStart = let (before, after) = splitWhile (`elem` identContinue) (c:cs) in
-		Token before at (wordType before) : lex' after (forward (length before) at)
-	|c == '"' = lexString cs "" at at
-	|c `elem` ['0'..'9'] = lexNumber (c:cs) at
+		Token before loc (wordType before) : lex' after (forward (length before) loc)
+	|c == '"' = lexString cs "" loc loc
+	|c `elem` ['0'..'9'] = lexNumber (c:cs) loc
 	|otherwise = error $ "Invalid character `" ++ [c] ++ "` in string"
 	where
 	ops :: String

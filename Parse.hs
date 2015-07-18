@@ -1,7 +1,7 @@
 
 module Parse where
 
-import Lex
+import Lex hiding(file)
 import Control.Applicative
 
 data Parse a = Parse { run :: (FilePath, [Token]) -> Result a }
@@ -10,21 +10,21 @@ data Result a = Success a [Token] | Error String [Token] Location deriving Show
 
 instance Functor Result where
 	fmap f (Success x ts) = Success (f x) ts
-	fmap _ (Error msg rest at) = Error msg rest at
+	fmap _ (Error msg rest loc) = Error msg rest loc
 
 instance Functor Parse where
 	fmap f p = Parse $ \t -> fmap f $ run p t
 
 instance Applicative Parse where
-	pure a = Parse $ \(file, tokens) -> Success a tokens
+	pure a = Parse $ \(_, tokens) -> Success a tokens
 	pf <*> pv = Parse $ \(file, tokens) -> case run pf (file, tokens) of
-		Error e rest at -> Error e rest at -- an error has occurred
+		Error e rest loc -> Error e rest loc -- an error has occurred
 		Success f rest -> run (fmap f pv) (file, rest)
 
 instance Monad Parse where
 	return = pure
 	x >>= f = Parse $ \(file, tokens) -> case run x (file, tokens) of
-		Error e rest at -> Error e rest at -- an error has occurred
+		Error e rest loc -> Error e rest loc -- an error has occurred
 		Success v rest -> run (f v) (file, rest)
 
 (|||) :: Parse a -> Parse a -> Parse a
@@ -34,7 +34,7 @@ f ||| g = Parse $ \tokens -> case run f tokens of
 
 (&&&) :: Parse x -> Parse a -> Parse a
 f &&& g = Parse $ \tokens -> case run f tokens of
-	Error msg rest at -> Error msg rest at
+	Error msg rest loc -> Error msg rest loc
 	_ -> run g tokens
 
 (???) :: Parse Bool -> (Parse a, Parse a) -> Parse a
@@ -61,9 +61,9 @@ parseMaybe :: Parse a -> Parse (Maybe a)
 parseMaybe p = fmap Just p ||| return Nothing
 
 peekMaybe :: Parse (Maybe Token)
-peekMaybe = Parse $ \(file, tokens) -> case tokens of
+peekMaybe = Parse $ \(_, tokens) -> case tokens of
 	[] -> Success Nothing tokens
-	(token : _) -> Success (Just token) tokens
+	(t : _) -> Success (Just t) tokens
 
 parseManyWhile :: Parse Bool -> Parse a -> Parse [a]
 parseManyWhile cond p = cond ??? (do
