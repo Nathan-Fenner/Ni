@@ -12,12 +12,12 @@ The compiler is written in Haskell, with no other external dependencies. I plan 
 ### Hello, world!
 ```
 func main! {
-	putStr "Hello, world!" !;
+	putStr "Hello, world."!;
 }
 ```
 ### Simple math
 ```
-func main!{ 
+func main! { 
 	var x : Int = 5;
 	var y : Int = 7;
 	print x!;
@@ -41,7 +41,7 @@ func multiplier (x : Int) (y : Int) : Int {
 }
 var doubler : Int -> Int = multiplier 2;
 var tripler : Int -> Int = multiplier 3;
-func main!{
+func main! {
 	print (doubler 5)!;
 	print (tripler 5)!;
 }
@@ -71,7 +71,7 @@ func main! {
 ```
 ### While-Loop
 ```
-func main!{
+func main! {
 	var count : Int = 10;
 	var i : Int = 1;
 	while i <= count {
