@@ -1,74 +1,115 @@
 
-var BANG = {/*bang!*/};
+// -----------------------------------------------
 
-function CALL(fun, args) {
-	if (!(args instanceof Array)) {
-		throw args;
+// This file has been generated with Nickel, a toy programming language that combines functional and imperative features.
+// See its project page here:
+// https://github.com/Nathan-Fenner/Ni
+
+// -----------------------------------------------
+"use strict";
+// -----------------------------------------------
+
+// Begin prelude
+
+var $Bang = {type: "bang"};
+var $Unit = {type: "unit"};
+
+function $Partial(fun, capacity, args) {
+	return {type:"partial", fun: fun, capacity: capacity, args: args};
+}
+function $Call(fun, args) {
+	return {type: "call", fun:fun, args: args};
+}
+function $Force(e) {
+	if (typeof e === "function") {
+		throw { message: "tried to a force a function", fun:e };
 	}
-	if (!fun) {
-		if (args.length != 0) {
-			throw args;
+	if (typeof e === "number"
+		|| typeof e === "string"
+		|| typeof e === "boolean"
+		|| e.type === "bang"
+		|| e.type === "unit") {
+		return e; // these are properly atomic values
+	}
+	if (e.type === "partial") {
+		if (e.args.length < e.capacity) {
+			return e;
+		} else {
+			if (e.args.length > e.capacity) {
+				throw { message: "e.capacity < e.args.length", e };
+			}
+			// An invokation is required
+			return $Force( e.fun.apply(undefined, e.args) );
 		}
-		return fun;
 	}
-	if (fun.sofar === undefined) {
-		// Create a partially-applied object.
-		return CALL({ nargs: fun.nargs, fun:fun.fun, sofar: [] }, args);
+	if (e.type === "call") {
+		// We have to force its function, then apply arguments one-by-one.
+		if (e.args.length == 0) {
+			// It's just its function
+			return $Force(e.fun);
+		}
+		var partial = $Force(e.fun);
+		if (partial.type !== "partial") {
+			throw {message: "attempted to call a non-partial object", partial: partial, e: e};
+		}
+		if (partial.args.length >= partial.capacity) {
+			throw {message: "received a supposedly-forced partial at capacity", partial: partial};
+		}
+		if (typeof partial.fun !== "function") {
+			throw {message: "received a supposedly-forced partial without a proper function", partial: partial};
+		}
+		var quantity = partial.capacity - partial.args.length;
+		var newArgs = e.args.slice(0, quantity);
+		var extraArgs = e.args.slice(quantity);
+		var newFun = $Force(partial.fun.apply(undefined, partial.args.concat(newArgs)));
+		return $Force($Call(newFun, extraArgs));
 	}
-	if (fun.sofar.length >= fun.nargs) {
-		// Overflow! Time to call!
-		var result = fun.fun(fun.sofar);
-		return CALL(result, args);
-	}
-	if (args.length === 0) {
-		return fun;
-	}
-	var copy = { nargs: fun.nargs, fun: fun.fun, sofar: fun.sofar.slice(0) };
-	copy.sofar.push( args[0] );
-	return CALL(copy, args.slice(1));
+	throw { message: "unfamiliar value to force", value: e};
 }
 
-function ADD(x, y) {
-	return x + y;
-}
-function SUBTRACT(x, y) {
-	return x - y;
-}
-function MULTIPLY(x, y) {
-	return x * y;
-}
-function DIVIDE(x, y) {
-	return (x / y)|0;
-}
-function MODULO(x, y) {
-	return x % y;
-}
-function EQUAL(x, y) {
-	return x == y;
-}
-function NOT_EQUAL(x, y) {
-	return x != y;
-}
-function GREATER_OR_EQUAL(x, y) {
-	return x >= y;
-}
-function LESS_OR_EQUAL(x, y) {
-	return x <= y;
-}
-function GREATER(x, y) {
-	return x > y;
-}
-function LESS(x, y) {
-	return x < y;
-}
-function CONCAT(x, y) {
-	return x + y;
-}
-function NEGATE(x) {
-	return -x;
-}
-function print(args) {
-	console.log(args[0]);
+function $MakeOperator(f) {
+	return $Partial(function(x, y) {
+		var X = $Force(x);
+		var Y = $Force(y);
+		return f(X, Y);
+	}, 2, []);
 }
 
+var $Operator = {
+	"+": $MakeOperator(function(x, y) { return x + y; }),
+	"-": $MakeOperator(function(x, y) { return x - y; }),
+	"*": $MakeOperator(function(x, y) { return x * y; }),
+	"/": $MakeOperator(function(x, y) { return (x / y)|0; }),
+	"%": $MakeOperator(function(x, y) { return x % y; }),
+	"++": $MakeOperator(function(x, y) { return x + y; }),
+	"&&": $MakeOperator(function(x, y) { return x && y; }),
+	"||": $MakeOperator(function(x, y) { return x || y; }),
+	"==": $MakeOperator(function(x, y) { return x == y; }),
+	"/=": $MakeOperator(function(x, y) { return x != y; }),
+	">=": $MakeOperator(function(x, y) { return x >= y; }),
+	"<=": $MakeOperator(function(x, y) { return x <= y; }),
+	">": $MakeOperator(function(x, y) { return x > y; }),
+	"<": $MakeOperator(function(x, y) { return x < y; })
+};
 
+// TODO:
+// $
+// >> >>=
+// << =<<
+// . ? or <>
+
+var $Prefix = {
+	"-": $Partial(function(x) { return -$Force(x); }, 1, [])
+};
+
+// End of Prelude
+// -----------------------------------------------
+// Start of Foreign
+
+var print = $Partial(function(thunk, $Bang) {
+	var value = $Force(thunk);
+	console.log(value);
+	return $Unit;
+}, 2, [])
+
+// End of Foreign

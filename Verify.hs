@@ -78,7 +78,7 @@ setReturn r (Scope _ ts) = Scope r ts
 assertTypeEqual :: Type -> Type -> Token -> Check ()
 assertTypeEqual left right atToken
 	|left === right = Pass ()
-	|otherwise = flunk atToken $ "got type `" ++ show left ++ "` but expected type `" ++ show right ++ "`"
+	|otherwise = flunk atToken $ "got type `" ++ niceType left ++ "` but expected type `" ++ niceType right ++ "`"
 
 getExpressionType :: Scope -> Expression -> Check Type
 getExpressionType scope (ExpressionIdentifier name) = case getType name scope of
@@ -97,12 +97,12 @@ getExpressionType scope (ExpressionCall fun args) = do
 	matchFuncType _ (TypeBangArrow _) (arg : _) = do
 		flunk (expressionAt arg) $ "expected bang `!` but got expression " ++ show arg
 	matchFuncType _ (TypeArrow left _) (ExpressionBang bang : _) =
-		flunk bang $ "was expecting an argument of type " ++ show left ++ ", not a bang `!`"
+		flunk bang $ "was expecting an argument of type `" ++ niceType left ++ "`, not a bang `!`"
 	matchFuncType wt (TypeArrow left right) (arg : rest) = do
 		argType <- getExpressionType scope arg
 		assertTypeEqual argType left (expressionAt arg)
 		matchFuncType wt right rest
-	matchFuncType wt t (arg : _) = flunk (expressionAt arg) $ "got expression " ++ show arg ++ " applied as an argument to function " ++ show fun ++ " : " ++ show wt ++ " when none were expected " ++ show t
+	matchFuncType wt t (arg : _) = flunk (expressionAt arg) $ "got expression " ++ show arg ++ " applied as an argument to function " ++ show fun ++ " : `" ++ niceType wt ++ "` when none were expected `" ++ niceType t ++ "`"
 getExpressionType _scope (ExpressionBang bang) = flunk bang "a bang `!` outside of a matching function call is not allowed"
 getExpressionType scope (ExpressionFunc _funcToken args bang returns body) = do
 	let scopeBody = setReturn returnType $ addTypes args scope
@@ -216,7 +216,6 @@ verifyStatementType scope (StatementLet _ body) = do
 	_ <- mapM (verifyStatementType newScope) body
 	return newScope
 	where
-	verifyLet StatementAssign{} = Pass []
 	verifyLet (StatementVarAssign varName varType _) = Pass [(varName, varType)]
 	verifyLet (StatementFunc _funcToken funcName arguments bang returns _body) = Pass [(funcName, funcType)] where
 		funcType = go (map snd arguments) where
@@ -228,7 +227,7 @@ verifyStatementType scope (StatementLet _ body) = do
 		returnType = case bang of
 			Nothing -> returnType'
 			Just _ -> TypeBangArrow returnType'
-	verifyLet s = flunk (statementAt s) $ "only assignments, variable definitions, and function declarations are allowed in let blocks"
+	verifyLet s = flunk (statementAt s) $ "only variable definitions and function declarations are allowed in let blocks"
 	
 
 verifyStatementBlock :: Scope -> [Statement] -> Check Scope

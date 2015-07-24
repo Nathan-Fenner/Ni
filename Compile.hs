@@ -7,7 +7,7 @@ import System.IO.Unsafe(unsafePerformIO)
 import Data.List(intercalate, sort)
 import Control.Applicative
 import Expression
-import Lex
+import Lex(token)
 
 -- Don't inline it, so that we read the file at most once.
 {-# NOINLINE preludeSource #-}
@@ -19,7 +19,7 @@ newtype FunctionID = FunctionID Int deriving (Show, Eq)
 data IDGenerator = IDGenerator{next :: (FunctionID, IDGenerator)}
 
 nextN :: Int -> IDGenerator -> ([FunctionID], IDGenerator)
-nextN count givenGen = go count [] givenGen where
+nextN count givenGen = (\(x, y) -> (reverse x, y)) $ go count [] givenGen where
 	go 0 result gen = (result, gen)
 	go n result gen = go (n-1) (fid : result) gen' where
 		(fid, gen') = next gen
@@ -28,11 +28,61 @@ functionIDGenerator :: Int -> IDGenerator
 functionIDGenerator n = IDGenerator{next = (FunctionID n, functionIDGenerator (n + 1))}
 
 newGenerator :: IDGenerator
-newGenerator = functionIDGenerator 1000
+newGenerator = functionIDGenerator 1
 
-data CompiledFunction = CompiledFunction FunctionID String deriving Show
+data CompiledFunction = CompiledFunction FunctionID I deriving Show
 
 data Compiled a = Compiled [CompiledFunction] a deriving Show
+
+data I
+	= IName String -- a lexical name (in the sense)
+	| ILiteral String
+	| ICall I [I]
+	| IForce I
+	| IPartial FunctionID Int [I]
+	| IAssign String I
+	| IVar String
+	| IVarAssign String I
+	| IIf I [I] [I]
+	| IWhile I [I]
+	| IDo I
+	| IFunc FunctionID [String] [I]
+	| IBreak
+	| IReturn I
+	| ISequence [I]
+	| IComment String
+	deriving Show
+
+
+tab :: String -> String
+tab "" = ""
+tab str = '\t' : tab' str where
+	tab' "\n" = "\n"
+	tab' "" = ""
+	tab' ('\n':cs) = '\n' : '\t' : tab' cs
+	tab' (c : cs) = c : tab' cs
+	
+
+serialize :: I -> String
+serialize (IName n) = n
+serialize (ILiteral s) = s
+serialize (ICall f a) = "$Call(" ++ serialize f ++ ", [" ++ intercalate ", " (map serialize a) ++ "])"
+serialize (IForce x) = "$Force(" ++ serialize x ++ ")"
+serialize (IPartial funID capacity args) = "$Partial(" ++ (serialize $ compileID funID) ++ ", " ++ show capacity ++ ", [" ++ intercalate ", " (map serialize args) ++ "])"
+serialize (IAssign v e) = v ++ " = " ++ serialize e ++ ";\n"
+serialize (IVar v) = "var " ++ v ++ ";\n"
+serialize (IVarAssign v e) = "var " ++ v ++ " = " ++ serialize e ++ ";\n"
+serialize (IIf c t []) = "if (" ++ serialize c ++ ") {\n" ++ (tab $ concat $ map serialize t) ++ "}\n"
+serialize (IIf c t e) = "if (" ++ serialize c ++ ") {\n" ++ (tab $ concat $ map serialize t) ++ "} else {\n" ++ (tab $ concat $ map serialize e) ++ "}\n"
+serialize (IWhile c b) = "while (" ++ serialize c ++ ") {\n" ++ (tab $ concat $ map serialize b) ++ "}\n"
+serialize (IDo e) = serialize e ++ ";\n"
+serialize (IFunc funID args body) =
+	"function " ++ serialize (compileID funID) ++ "(" ++ intercalate ", " args ++ ") {\n" ++ (tab $ concat $ map serialize body) ++ "\treturn $Unit;\n}\n"
+
+serialize IBreak = "break;\n"
+serialize (IReturn e) = "return " ++ serialize e ++ ";\n"
+serialize (ISequence s) = concat $ map serialize s
+serialize (IComment comment) = "// " ++ comment ++ "\n"
 
 instance Functor Compiled where
 	fmap f (Compiled x a) = Compiled x (f a)
@@ -48,22 +98,22 @@ instance Monad Compiled where
 newID :: Compiled a -> Compiled FunctionID
 newID (Compiled fs _)  = Compiled fs (FunctionID (length fs))
 
-addFunction :: FunctionID -> String -> Compiled ()
-addFunction fid body = Compiled [CompiledFunction fid body] ()
+addFunction :: FunctionID -> I -> Compiled ()
+addFunction funID fun = Compiled [CompiledFunction funID fun] ()
 
-compileID :: FunctionID -> String
-compileID (FunctionID n) = "_fun" ++ show n
+compileID :: FunctionID -> I
+compileID (FunctionID n) = IName ("$Fun_" ++ show n)
 
 ----
 
-mapGen :: IDGenerator -> [Expression] -> Compiled (IDGenerator, [String])
+mapGen :: IDGenerator -> [Expression] -> Compiled (IDGenerator, [I])
 mapGen gen [] = return (gen, [])
 mapGen gen (x:xs) = do
 	(gen', x') <- compileExpression gen x
 	(gen'', xs') <- mapGen gen' xs
 	return (gen'', x' : xs')
 
-mapGen' :: IDGenerator -> [Statement] -> Compiled (IDGenerator, [String])
+mapGen' :: IDGenerator -> [Statement] -> Compiled (IDGenerator, [I])
 mapGen' gen [] = return (gen, [])
 mapGen' gen (x:xs) = do
 	(gen', x') <- compileStatement gen x
@@ -84,6 +134,8 @@ nub' list = go $ sort list where
 
 less :: [String] -> [String] -> [String]
 less list remove = filter (\l -> not $ l `elem` remove) list
+
+----
 
 containedVariables :: Expression -> [String]
 containedVariables (ExpressionIdentifier name) = [token name]
@@ -120,151 +172,118 @@ containedVariables' (StatementFunc{ funcName, argumentsStatement, bodyStatement 
 -- containedVariables' (s : _) = error $ show s
 containedVariables' [] = []
 
-compileStatement :: IDGenerator -> Statement -> Compiled (IDGenerator, String)
-compileStatement gen (StatementAssign name value) = do
-	(gen', value') <- compileExpression gen value
-	return (gen', token name ++ " = " ++ value' ++ ";\n")
-compileStatement gen (StatementVarVoid name _) = return (gen, "var " ++ token name ++ ";\n")
-compileStatement gen (StatementVarAssign name _ value) = do
-	(gen', value') <- compileExpression gen value
-	return (gen', "var " ++ token name ++ " = " ++ value' ++ ";\n")
-compileStatement gen (StatementDo value) = do
-	(gen', value') <- compileExpression gen value
-	return (gen', value' ++ ";\n")
-compileStatement gen (StatementIf _ con body) = do
-	(gen', con') <- compileExpression gen con
-	(gen'', body') <- compileStatements gen' body
-	return (gen'', "if (" ++ con' ++ ") {\n" ++ body' ++ "}\n")
-compileStatement gen (StatementIfElse _ con bodyThen bodyElse) = do
-	(gen', con') <- compileExpression gen con
-	(gen'', bodyThen') <- compileStatements gen' bodyThen
-	(gen''', bodyElse') <- compileStatements gen'' bodyElse
-	return (gen''', "if (" ++ con' ++ ") {\n" ++ bodyThen' ++ "} else {\n" ++ bodyElse' ++ "}\n")
-compileStatement gen (StatementWhile _ con body) = do
-	(gen', con') <- compileExpression gen con
-	(gen'', body') <- compileStatements gen' body
-	return (gen'', "while (" ++ con' ++ ") {\n" ++ body' ++ "}\n")
-compileStatement gen (StatementReturn _ (Just value)) = do
-	(gen', value') <- compileExpression gen value
-	return (gen', "return " ++ value' ++ ";\n")
-compileStatement gen (StatementReturn _ Nothing) = do
-	return (gen, "return;\n")
-compileStatement gen (StatementBreak _) = do
-	return (gen, "break;\n")
-compileStatement gen (StatementLet _ body) = do
-	-- Variables in a let-block may refer to one another.
-	-- To allow this, they are all wrapped in functions taking no parameters, returning these values:
-	--     var x = y + 1;
-	--     var y = 2;
-	--     var z = y + 3;
-	-- becomes:
-	--     var x = func { return y + 1; }
-	--     var y = func { return 2; }
-	--     var z = func { return y + 3; }
-	-- we pull these functions out to the top: (in JS):
-	--    function fun_70(x, y, z) { return y + 1; }
-	--    function fun_71(x, y, z) { return 2; }
-	--    function fun_72(x, y, z) { return y + 3; }
-	-- in the code:
-	--    var x = CALL(fun_70, [fun_70 fun_71 fun_72]);
-	--    var y = CALL(fun_71, [fun_70 fun_71 fun_72]);
-	--    var z = CALL(fun_72, [fun_70 fun_71 fun_72]);
-	-- hence, we must know the names of what we are assigning,
-	-- and whether they're already in scope, or need to be brought into scope.
-	let names = map getName body
-	let values = map getValue body
-	let wrappedValues = map wrapValue values
-	(gen', funRefs) <- mapGen gen wrappedValues
-	-- funRefs will be expressions like
-	--     CALL( FUNC_70, [x, y, z] )
-	-- which means that all we have to do is figure out the FIDs of these,
-	-- and use these!
-	let fids = map (\s -> takeWhile (/= ',') $ drop 5 s) funRefs
-	-- This will be over-zealous with the "var's", but no one should care for a while.
-	-- TODO: remove the ones we don't use
-	let noticeBefore = "// BEGIN LET\n"
-	let before = concat $ map (\(name, fid) -> "var " ++ name ++ " = " ++ fid ++ ";\n" ) (zip names fids)
-	let during = concat $ map (\(name, funRef) -> "var let_rec_" ++ name ++ " = " ++ funRef ++ ";\n") (zip names funRefs)
-	let after = concat $ map (\name -> name ++ " = let_rec_" ++ name ++ ";\n") names
-	let noticeAfter = "// END LET\n"
-
-	return (gen', noticeBefore ++ before ++ during ++ after ++ noticeAfter)
-	where
-	getName :: Statement -> String
-	getName (StatementAssign name _) = token name
-	getName (StatementVarAssign name _ _) = token name
-	getName (StatementFunc{ funcName }) = token funcName
-	getName s = error $ "programming error: invalid statement type present in let-block: " ++ show s
-	getValue :: Statement -> Expression
-	getValue (StatementAssign _ value) = value
-	getValue (StatementVarAssign _ _ value) = value
-	getValue StatementFunc{ funcToken, argumentsStatement, funcBangStatement, returnTypeStatement, bodyStatement }
-		= ExpressionFunc funcToken argumentsStatement funcBangStatement returnTypeStatement bodyStatement
-	getValue s = error $ "programming error: invalid statement type present in let-block: " ++ show s
-	wrapValue :: Expression -> Expression
-	wrapValue value = ExpressionFunc (Token "func" (FileEnd "*") Special) [] Nothing Nothing [ StatementReturn (Token "return" (FileEnd "*") Special) (Just value) ]	
-compileStatement gen StatementFunc{ funcToken, funcName, argumentsStatement, funcBangStatement, returnTypeStatement, bodyStatement }
-	= compileStatement gen $
-		StatementLet (Token "let" (FileEnd "*") Special) [
-			StatementVarAssign funcName (error "TODO: ?") $
-				ExpressionFunc funcToken argumentsStatement funcBangStatement returnTypeStatement bodyStatement
-		]
-
-compileStatements :: IDGenerator -> [Statement] -> Compiled (IDGenerator, String)
-compileStatements gen [] = return (gen, "")
-compileStatements gen (s:ss) = do
-	(gen', s') <- compileStatement gen s
-	(gen'', ss') <- compileStatements gen' ss
-	return (gen'', s' ++ ss')
-
-compileExpression :: IDGenerator -> Expression -> Compiled (IDGenerator, String)
-compileExpression gen (ExpressionIdentifier name) = return (gen, token name)
-compileExpression gen (ExpressionIntegerLiteral value) = return (gen, token value)
-compileExpression gen (ExpressionDecimalLiteral value) = return (gen, token value)
-compileExpression gen (ExpressionStringLiteral value) = return (gen, show $ token value)
-compileExpression gen (ExpressionBang _) = return (gen, "BANG")
+compileExpression :: IDGenerator -> Expression -> Compiled (IDGenerator, I)
+compileExpression gen (ExpressionIdentifier t) = return (gen, IName $ token t)
+compileExpression gen (ExpressionIntegerLiteral t) = return (gen, ILiteral $ token t)
+compileExpression gen (ExpressionDecimalLiteral t) = return (gen, ILiteral $ token t)
+compileExpression gen (ExpressionStringLiteral t) = return (gen, ILiteral $ show $ token t)
+compileExpression gen (ExpressionBang _) = return (gen, IName "$Bang")
 compileExpression gen (ExpressionCall fun args) = do
 	(gen', fun') <- compileExpression gen fun
 	(gen'', args') <- mapGen gen' args
-	let sargs = "[" ++ intercalate ", " args' ++ "]"
-	return (gen'', "CALL(" ++ fun' ++ ", " ++ sargs ++ ")")
-compileExpression gen e@ExpressionFunc{arguments, funcBang, body} = do
-	let (fid, gen') = next gen
-	(gen'', sbody) <- compileStatements gen' body
-	let extraArguments = containedVariables e
-	let allArguments = extraArguments ++ map (token . fst) arguments
-	let extractArguments = concat $ map (\(arg, i) -> "var " ++ arg ++ " = _ni_args[" ++ show i ++ "];\n") $ zip allArguments [0 :: Int ..]
-	let cargs = "[" ++ intercalate ", " extraArguments ++ "]"
-	let n = length allArguments + if isNothing funcBang then 0 else 1
-	addFunction fid $ "{nargs: " ++ show n ++ ", fun:\nfunction(_ni_args) {\n" ++ extractArguments ++ sbody ++ "}\n}"
-	return (gen'', "CALL(" ++ compileID fid ++ ", " ++ cargs ++ ")")
+	return (gen'', ICall fun' args')
+compileExpression gen e@ExpressionFunc{ arguments, funcBang, body } = do
+	-- TODO: add implicit arguments
+	let implicits = containedVariables e
+	(gen', body') <- mapGen' gen body
+	let (funID, gen'') = next gen'
+	addFunction funID (IFunc funID (implicits ++ fullArguments) body')
+	return (gen'', IPartial funID (length fullArguments + length implicits) (map IName implicits))
+	where
+	fullArguments = map (token . fst) arguments ++ if isNothing funcBang then [] else ["$Bang"]
 compileExpression gen (ExpressionOp left op right) = do
 	(gen', left') <- compileExpression gen left
 	(gen'', right') <- compileExpression gen' right
-	let funName = case token op of
-		"+" -> "ADD"
-		"-" -> "SUBTRACT"
-		"*" -> "MULTIPLY"
-		"/" -> "DIVIDE"
-		"%" -> "MODULO"
-		"++" -> "CONCAT"
-		"==" -> "EQUAL"
-		"/=" -> "NOT_EQUAL"
-		">=" -> "GREATER_OR_EQUAL"
-		"<=" -> "LESS_OR_EQUAL"
-		">" -> "GREATER"
-		"<" -> "LESS"
-		o -> error $ "programming error: infix operator `" ++ o ++ "` does not exist"
-	return $ (gen'', funName ++ "(" ++ left' ++ ", " ++ right' ++ ")")
+	return (gen'', ICall (IName $ "$Operator[" ++ show (token op) ++ "]") [left', right'])
 compileExpression gen (ExpressionPrefix op arg) = do
 	(gen', arg') <- compileExpression gen arg
-	let funName = case token op of
-		"-" -> "NEGATE"
-		o -> error $ "programming error: prefix operator `" ++ o ++ "` does not exist"
-	return $ (gen', funName ++ "(" ++ arg' ++ ")")
+	return (gen', ICall (IName $ "$Prefix[" ++ show (token op) ++ "]") [arg'])
+
+compileStatement :: IDGenerator -> Statement -> Compiled (IDGenerator, I)
+compileStatement gen (StatementAssign var value) = do
+	(gen', value') <- compileExpression gen value
+	return (gen', IAssign (token var) (IForce value'))
+compileStatement gen (StatementVarVoid var _) = return (gen, IVar (token var))
+compileStatement gen (StatementVarAssign var _ value) = do
+	(gen', value') <- compileExpression gen value
+	return (gen', IVarAssign (token var) (IForce value'))
+compileStatement gen (StatementDo value) = do
+	(gen', value') <- compileExpression gen value
+	return (gen', IDo (IForce value'))
+compileStatement gen (StatementIf _ con thenBlock) = do
+	(gen', con') <- compileExpression gen con
+	(gen'', thenBlock') <- mapGen' gen' thenBlock
+	return (gen'', IIf (IForce con') thenBlock' [])
+compileStatement gen (StatementIfElse _ con thenBlock elseBlock) = do
+	(gen', con') <- compileExpression gen con
+	(gen'', thenBlock') <- mapGen' gen' thenBlock
+	(gen''', elseBlock') <- mapGen' gen'' elseBlock
+	return (gen''', IIf (IForce con') thenBlock' elseBlock')
+compileStatement gen (StatementWhile _ con block) = do
+	(gen', con') <- compileExpression gen con
+	(gen'', block') <- mapGen' gen' block
+	return (gen'', IWhile (IForce con') block')
+compileStatement gen (StatementReturn _ (Just value)) = do
+	(gen', value') <- compileExpression gen value
+	return (gen', IReturn (IForce value'))
+compileStatement gen (StatementReturn _ Nothing) = return (gen, IReturn (IName "$Unit"))
+compileStatement gen (StatementBreak _) = return (gen, IBreak)
+compileStatement gen (StatementLet _ block) = do
+	(gen', values) <- valuesOf gen block
+	(gen'', contextualValues) <- makeContexts gen' values
+	let letDeclares = map (\(n, v) -> IVarAssign n v) (zip letLetNames contextualValues)
+	return (gen'', ISequence $ [IComment "begin let"] ++ (letDeclares ++ letAssembles) ++ [IComment "end"] )
+	where
+	letNames :: [String]
+	letNames = map nameOf block where
+		nameOf (StatementVarAssign var _ _) = token var
+		nameOf StatementFunc{funcName} = token funcName
+		nameOf _ = error "not a valid let-member"
+	letLetNames :: [String]
+	letLetNames = map ("$Let_" ++) letNames
+	letAssembles = [ IVarAssign n (ICall (IName $ "$Let_" ++ n) (map IName $ implicits ++ letLetNames)) | n <- letNames ]
+	implicits :: [String]
+	implicits = nub' $ concat (map (containedVariables' . (:[])) block) `less` letNames
+	valuesOf mgen [] = return (mgen, [])
+	valuesOf mgen (x : xs) = do
+		(mgen', x') <- valueOf mgen x
+		(mgen'', xs') <- valuesOf mgen' xs
+		return (mgen'', x':xs')
+	valueOf mgen (StatementVarAssign _ _ value) = compileExpression mgen value
+	valueOf mgen StatementFunc{funcToken, argumentsStatement, funcBangStatement, returnTypeStatement, bodyStatement} =
+		compileExpression mgen (ExpressionFunc funcToken argumentsStatement funcBangStatement returnTypeStatement bodyStatement)
+	valueOf _ _ = error "illegal let-member"
+	makeContext :: IDGenerator -> I -> Compiled (IDGenerator, I)
+	makeContext mgen value = do
+		let (funID, mgen') = next mgen
+		addFunction funID $ IFunc funID (implicits ++ letLetNames) (preamble ++ [IReturn value])
+		return (mgen', IPartial funID (length $ implicits ++ letNames) [])
+		where
+		preamble :: [I]
+		preamble = [IVarAssign n (ICall (IName $ "$Let_" ++ n) (map IName $ implicits ++ letLetNames)) | n <- letNames]
+	makeContexts :: IDGenerator -> [I] -> Compiled (IDGenerator, [I])
+	makeContexts mgen [] = return (mgen, [])
+	makeContexts mgen (i:is) = do
+		(mgen', i') <- makeContext mgen i
+		(mgen'', is') <- makeContexts mgen' is
+		return (mgen'', i' : is')
+compileStatement mgen StatementFunc{funcToken, funcName, argumentsStatement, funcBangStatement, returnTypeStatement, bodyStatement} =
+	compileStatement mgen $ StatementLet (error "let token is useless")
+		[StatementVarAssign funcName (error "type is useless") $ ExpressionFunc funcToken argumentsStatement funcBangStatement returnTypeStatement bodyStatement]
+	-- we will pass our implicits off as the shared "context" for evaluation.
 
 compileProgram :: Statement -> String
-compileProgram statement = preludeSource ++ concat (map renderPrelude prelude) ++ "\n\n" ++ line
-	where
-	Compiled prelude (_, line) = compileStatement newGenerator statement
-	renderPrelude (CompiledFunction fid object) = "var " ++ compileID fid ++ " = " ++ object ++ ";\n"
+compileProgram statement = case compileStatement newGenerator statement of
+	Compiled headers (_, value) ->
+		preludeSource ++
+		concat (map (\(CompiledFunction _ v) -> serialize v) headers) ++
+		"\n\n// Program\n" ++
+		"try {\n" ++
+		tab (serialize value) ++
+		"} catch (m) {\n" ++
+		"\tconsole.log('An unexpected error occurred', m);\n" ++
+		"}\n"
+
+
+
+

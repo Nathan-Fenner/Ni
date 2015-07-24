@@ -13,4 +13,3 @@ pause
 
 rm *.hi
 rm *.o
-rm *.exe

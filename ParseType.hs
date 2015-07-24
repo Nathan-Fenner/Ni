@@ -11,6 +11,17 @@ data Type
 	| TypeArrow Type Type
 	deriving Show
 
+niceType :: Type -> String
+niceType (TypeName t) = token t
+niceType (TypeCall fun args) = niceType fun ++ concat (map niceTypeArg args) where
+	niceTypeArg (TypeName x) = token x
+	niceTypeArg t = " (" ++ niceType t ++ ")"
+niceType (TypeBangArrow right) = "! -> " ++ niceType right
+niceType (TypeArrow left right) = niceTypeLeft left ++ " -> " ++ niceType right where
+	niceTypeLeft (TypeName t) = token t
+	niceTypeLeft t@TypeCall{} = niceType t
+	niceTypeLeft t = "(" ++ niceTypeLeft t ++ ")"
+
 (===) :: Type -> Type -> Bool
 TypeName a === TypeName b = token a == token b
 TypeCall f fArgs === TypeCall g gArgs = f === g && length fArgs == length gArgs && and (zipWith (===) fArgs gArgs)

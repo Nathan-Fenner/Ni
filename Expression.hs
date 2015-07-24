@@ -12,7 +12,13 @@ data Expression
 	| ExpressionStringLiteral Token
 	| ExpressionBang Token
 	| ExpressionCall Expression [Expression]
-	| ExpressionFunc { anonFuncToken :: Token, arguments :: [(Token, Type)], funcBang :: Maybe Token, returnType :: Maybe Type , body :: [Statement] }
+	| ExpressionFunc
+		{ anonFuncToken :: Token
+		, arguments :: [(Token, Type)]
+		, funcBang :: Maybe Token
+		, returnType :: Maybe Type
+		, body :: [Statement]
+		}
 	| ExpressionOp Expression Token Expression
 	| ExpressionPrefix Token Expression
 	deriving Show
@@ -68,7 +74,7 @@ parseFuncArg = do
 parseFunc :: Parse Expression
 parseFunc = do
 	funcWord <- expectSpecial "func" "func begins function declaration"
-	funcArgs <- parseManyUntil (peekTokenName ":" ||| peekTokenName "{" ||| peekTokenName "!") parseFuncArg
+	funcArgs <- parseManyUntil (peekTokenName ":" ^|| peekTokenName "{" ^|| peekTokenName "!") parseFuncArg
 	bang <- maybeCheckTokenName "!"
 	returns <- parseMaybe (expectSpecial ":" "(optional) return type" >> parseType)
 	block <- parseBlock

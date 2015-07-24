@@ -1,21 +1,14 @@
-let {
-
-func twice (n : Int) : Int {
-	return n * 2;
-}
-
-func say (n : Int) ! {
-	print n!;
-	print n!;
-	print n!;
-}
-
-func main {
-	var x : Int = 1;
-	while x < 20 {
-		say (twice x)!;
-		x = x + 1;
+if 1 == 1 {
+	var x : Int = 4;
+	let {
+		var m : Int = linCap 3;
+		func linCap (n : Int) : Int {
+			if n <= 100 {
+				return n;
+			}
+			return 100 + m * (n - 100);
+		}
 	}
-}
-
+	print (linCap 5)!;
+	print (linCap 105)!;
 }
