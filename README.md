@@ -11,22 +11,28 @@ The compiler is written in Haskell, with no other external dependencies.
 
 ### Hello, world!
 ```
-putStr "Hello, world!" !;
+func main! {
+	putStr "Hello, world!" !;
+}
 ```
 ### Simple math
 ```
-var x : Int = 5;
-var y : Int = 7;
-print x!;
-print y!;
-print (x + y)!;
+func main!{ 
+	var x : Int = 5;
+	var y : Int = 7;
+	print x!;
+	print y!;
+	print (x + y)!;
+}
 ```
 ### Functions
 ```
 func square (x : Int) : Int {
 	return x*x;
 }
-print (square 4)!;
+func main! {
+	print (square 4)!;	
+}
 ```
 ### Partial Application with Currying
 ```
@@ -35,9 +41,10 @@ func multiplier (x : Int) (y : Int) : Int {
 }
 var doubler : Int -> Int = multiplier 2;
 var tripler : Int -> Int = multiplier 3;
-
-print (doubler 5)!;
-print (tripler 5)!;
+func main!{
+	print (doubler 5)!;
+	print (tripler 5)!;
+}
 ```
 ### Recursive Functions
 ```
@@ -48,7 +55,9 @@ func factorial (n : Int) : Int {
 		return n * factorial (n-1);
 	}
 }
-print (factorial 5)!;
+func main! {
+	print (factorial 5)!;	
+}
 ```
 ### Higher-Order Functions
 ```
@@ -56,30 +65,36 @@ func twice (f : ! -> Void) ! {
 	f!;
 	f!;
 }
-twice (print 4)!;
+func main! {
+	twice (print 4)!;
+}
 ```
 ### While-Loop
 ```
-var count : Int = 10;
-var i : Int = 1;
-while i <= count {
-	print i!;
-	i = i + 1;
+func main!{
+	var count : Int = 10;
+	var i : Int = 1;
+	while i <= count {
+		print i!;
+		i = i + 1;
+	}
 }
 ```
 ### Implicit Parameters
 ```
-var count : Int = 5;
-func many (f : ! -> Void) ! {
-	var i : Int = 1;
-	while i <= count {
-		f!;
-		i = i + 1;
+func main! {
+	var count : Int = 5;
+	func many (f : ! -> Void) ! {
+		var i : Int = 1;
+		while i <= count {
+			f!;
+			i = i + 1;
+		}
 	}
+	many (print 7)!;
+	count = 2;
+	many (print 3)!;
 }
-many (print 7)!;
-count = 2;
-many (print 3)!;
 ```
 Nickel implements "implicit parameters" rather than closures for functions.
 This means that changing variables after a function definition won't have any effect on that function's behavior.
