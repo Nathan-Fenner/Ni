@@ -49,6 +49,7 @@ expressionAt (ExpressionIdentifier t) = t
 expressionAt (ExpressionIntegerLiteral t) = t
 expressionAt (ExpressionDecimalLiteral t) = t
 expressionAt (ExpressionStringLiteral t) = t
+expressionAt (ExpressionBoolLiteral t) = t
 expressionAt (ExpressionBang t) = t
 expressionAt (ExpressionCall e _) = expressionAt e
 expressionAt (ExpressionFunc { anonFuncToken = t }) = t
@@ -87,6 +88,7 @@ getExpressionType scope (ExpressionIdentifier name) = case getType name scope of
 getExpressionType _scope (ExpressionIntegerLiteral _) = Pass (makeType "Int")
 getExpressionType _scope (ExpressionDecimalLiteral _) = Pass (makeType "Float")
 getExpressionType _scope (ExpressionStringLiteral _) = Pass (makeType "String")
+getExpressionType _scope (ExpressionBoolLiteral _) = Pass (makeType "Bool")
 getExpressionType scope (ExpressionCall fun args) = do
 	funType <- getExpressionType scope fun
 	matchFuncType funType funType args

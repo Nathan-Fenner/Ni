@@ -5,7 +5,7 @@ Nickel is a strongly-typed, semifunctional imperative language with (sometimes!)
 
 It's currently transpiled to JavaScript, with plans for a similar transpilation to C.
 
-The compiler is written in Haskell, with no other external dependencies.
+The compiler is written in Haskell, with no other external dependencies. I plan on bootstrapping it, eventually.
 
 ## Examples
 
@@ -110,8 +110,3 @@ This means that changing variables after a function definition won't have any ef
 * Objects and Methods
 * Concurrency features
 * Better error messages
-
-## Why the name?
-
-Being named after a mineral suggests resilience and malleability.
-Being named after a coin suggests being cheap to use - (I hope) you can avoid incurring lots of technical debt.

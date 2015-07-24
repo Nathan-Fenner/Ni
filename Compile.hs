@@ -142,6 +142,7 @@ containedVariables (ExpressionIdentifier name) = [token name]
 containedVariables ExpressionIntegerLiteral{} = []
 containedVariables ExpressionDecimalLiteral{} = []
 containedVariables ExpressionStringLiteral{} = []
+containedVariables ExpressionBoolLiteral{} = []
 containedVariables ExpressionBang{} = []
 containedVariables (ExpressionCall fun args) = nub' $ containedVariables fun ++ concat (map containedVariables args)
 containedVariables ExpressionFunc{arguments, body} = containedVariables' body `less` map (token . fst) arguments
@@ -177,6 +178,8 @@ compileExpression gen (ExpressionIdentifier t) = return (gen, IName $ token t)
 compileExpression gen (ExpressionIntegerLiteral t) = return (gen, ILiteral $ token t)
 compileExpression gen (ExpressionDecimalLiteral t) = return (gen, ILiteral $ token t)
 compileExpression gen (ExpressionStringLiteral t) = return (gen, ILiteral $ show $ token t)
+compileExpression gen (ExpressionBoolLiteral t) =
+	return (gen, ILiteral $ case token t of "True" -> "true"; "False" -> "false"; _ -> error "invalid boolean constant")
 compileExpression gen (ExpressionBang _) = return (gen, IName "$Bang")
 compileExpression gen (ExpressionCall fun args) = do
 	(gen', fun') <- compileExpression gen fun

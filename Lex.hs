@@ -125,4 +125,4 @@ wordType word
 	|otherwise = Identifier
 
 specialWords :: [String]
-specialWords = ["func", "while", "if", "else", "for", "var", "let", "return"]
+specialWords = ["func", "while", "if", "else", "for", "var", "let", "return", "True", "False"]

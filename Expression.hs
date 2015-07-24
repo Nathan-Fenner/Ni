@@ -10,6 +10,7 @@ data Expression
 	| ExpressionIntegerLiteral Token
 	| ExpressionDecimalLiteral Token
 	| ExpressionStringLiteral Token
+	| ExpressionBoolLiteral Token
 	| ExpressionBang Token
 	| ExpressionCall Expression [Expression]
 	| ExpressionFunc
@@ -35,6 +36,9 @@ parseDecimalLiteral = fmap ExpressionDecimalLiteral (expectToken (\t -> kind t =
 parseStringLiteral :: Parse Expression
 parseStringLiteral = fmap ExpressionStringLiteral (expectToken (\t -> kind t == StringLiteral) "string literal")
 
+parseBoolLiteral :: Parse Expression
+parseBoolLiteral = fmap ExpressionBoolLiteral $ (expectSpecial "true" "true") ||| (expectSpecial "false" "false")
+
 parseParens :: Parse Expression
 parseParens = do
 	_ <- expectSpecial "(" "open paren"
@@ -48,8 +52,10 @@ parseAtom
 	||| parseIntegerLiteral
 	||| parseDecimalLiteral
 	||| parseStringLiteral
+	||| parseBoolLiteral
 	||| parseParens
 	||| parseFunc
+	||| reject "expected an expression here; maybe you forgot a semicolon?"
 
 parseBang :: Parse Expression
 parseBang = fmap ExpressionBang $ expectSpecial "!" "bang"

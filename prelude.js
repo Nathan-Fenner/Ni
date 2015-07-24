@@ -79,11 +79,11 @@ function $MakeOperator(f) {
 }
 
 var $Operator = {
-	"+": $MakeOperator(function(x, y) { return x + y; }),
-	"-": $MakeOperator(function(x, y) { return x - y; }),
-	"*": $MakeOperator(function(x, y) { return x * y; }),
+	"+": $MakeOperator(function(x, y) { return (x + y)|0; }),
+	"-": $MakeOperator(function(x, y) { return (x - y)|0; }),
+	"*": $MakeOperator(function(x, y) { return (x * y)|0; }),
 	"/": $MakeOperator(function(x, y) { return (x / y)|0; }),
-	"%": $MakeOperator(function(x, y) { return x % y; }),
+	"%": $MakeOperator(function(x, y) { return (x % y)|0; }),
 	"++": $MakeOperator(function(x, y) { return x + y; }),
 	"&&": $MakeOperator(function(x, y) { return x && y; }),
 	"||": $MakeOperator(function(x, y) { return x || y; }),
@@ -102,7 +102,7 @@ var $Operator = {
 // . ? or <>
 
 var $Prefix = {
-	"-": $Partial(function(x) { return -$Force(x); }, 1, [])
+	"-": $Partial(function(x) { return (-$Force(x))|0; }, 1, [])
 };
 
 // End of Prelude
