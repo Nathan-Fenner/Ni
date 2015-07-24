@@ -67,7 +67,7 @@ parseFuncArg = do
 	_ <- expectSpecial "(" "expected `(` to open argument"
 	argName <- expectIdentifier "argument name"
 	_ <- expectSpecial ":" "expected `:` for type indicator"
-	argType <- parseTypeAtom
+	argType <- parseType
 	_ <- expectSpecial ")" "expected `)` to close corresponding `(`" -- TODO: location of matching paren
 	return (argName, argType)
 

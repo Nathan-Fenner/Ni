@@ -58,6 +58,9 @@ function $Force(e) {
 		if (typeof partial.fun !== "function") {
 			throw {message: "received a supposedly-forced partial without a proper function", partial: partial};
 		}
+		if (partial.args.length + e.args.length < partial.capacity) {
+			return $Partial(partial.fun, partial.capacity, partial.args.concat(e.args));
+		}
 		var quantity = partial.capacity - partial.args.length;
 		var newArgs = e.args.slice(0, quantity);
 		var extraArgs = e.args.slice(quantity);

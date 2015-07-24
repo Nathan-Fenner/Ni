@@ -28,6 +28,17 @@ func square (x : Int) : Int {
 }
 print (square 4)!;
 ```
+### Partial Application with Currying
+```
+func multiplier (x : Int) (y : Int) : Int {
+	return x * y;
+}
+var doubler : Int -> Int = multiplier 2;
+var tripler : Int -> Int = multiplier 3;
+
+print (doubler 5)!;
+print (tripler 5)!;
+```
 ### Recursive Functions
 ```
 func factorial (n : Int) : Int {
@@ -49,8 +60,8 @@ twice (print 4)!;
 ```
 ### While-Loop
 ```
-var count = 10;
-var i = 1;
+var count : Int = 10;
+var i : Int = 1;
 while i <= count {
 	print i!;
 	i = i + 1;
@@ -58,11 +69,12 @@ while i <= count {
 ```
 ### Implicit Parameters
 ```
-var count = 5;
+var count : Int = 5;
 func many (f : ! -> Void) ! {
-	var i = 1;
+	var i : Int = 1;
 	while i <= count {
 		f!;
+		i = i + 1;
 	}
 }
 many (print 7)!;
