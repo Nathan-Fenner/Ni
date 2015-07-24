@@ -57,6 +57,7 @@ while i <= count {
 }
 ```
 ### Implicit Parameters
+```
 var count = 5;
 func many (f : ! -> Void) ! {
 	var i = 1;
