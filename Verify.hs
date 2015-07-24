@@ -238,7 +238,10 @@ verifyStatementBlock scope (s : ss) = do
 
 topScope :: Scope
 topScope =
-	Scope (makeType "Void") [(Token "print" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` TypeBangArrow (makeType "Void"))]
+	Scope (makeType "Void")
+		[ (Token "print" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` TypeBangArrow (makeType "Void"))
+		, (Token "putStr" (FileEnd "^") Identifier, makeType "String" `TypeArrow` TypeBangArrow (makeType "Void"))
+		]
 
 verifyProgram :: Statement -> Check ()
 verifyProgram program = verifyStatementType topScope program >> return ()

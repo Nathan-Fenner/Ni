@@ -110,6 +110,12 @@ var print = $Partial(function(thunk, $Bang) {
 	var value = $Force(thunk);
 	console.log(value);
 	return $Unit;
-}, 2, [])
+}, 2, []);
+
+var putStr = $Partial(function(thunk, $Bang) {
+	var value = $Force(thunk);
+	console.log(value);
+	return $Unit;
+}, 2, []);
 
 // End of Foreign
