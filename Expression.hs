@@ -251,3 +251,8 @@ parseBlock = do
 	block <- parseManyUntil (peekTokenName "}") parseStatement
 	_ <- expectSpecial "}" "expected `}` to close block" -- TODO: add information about matching paren
 	return block
+
+parseModule :: Parse Statement
+parseModule = do
+	block <- parseManyUntil peekFileEnd parseStatement
+	return $ StatementLet (Token "module" (FileEnd "^") Special) block

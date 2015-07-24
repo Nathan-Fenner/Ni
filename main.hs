@@ -30,7 +30,7 @@ main :: IO ()
 main = do
 	example <- readFile "example.ni"
 	let exampleLexed = lexer example "example.ni"
-	let exampleParsed = run parseStatement ("example.ni", exampleLexed)
+	let exampleParsed = run parseModule ("example.ni", exampleLexed)
 	case exampleParsed of
 		Success tree [] -> succeedParse tree
 		Success _tree rest -> putStrLn $ "didn't consume all input: " ++ show rest

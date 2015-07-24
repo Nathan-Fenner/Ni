@@ -151,7 +151,7 @@ containedVariables (ExpressionPrefix _ arg) = containedVariables arg
 containedVariables' :: [Statement] -> [String]
 containedVariables' (StatementAssign _ value : ss) = nub' $ containedVariables value ++ containedVariables' ss
 containedVariables' (StatementVarVoid name _ : ss) = containedVariables' ss `less` [token name]
-containedVariables' (StatementVarAssign name _ value : ss) = (containedVariables value ++ containedVariables' ss) `less` [token name]
+containedVariables' (StatementVarAssign name _ value : ss) = nub' (containedVariables value ++ containedVariables' ss) `less` [token name]
 containedVariables' (StatementDo e : ss) = nub' $ containedVariables e ++ containedVariables' ss
 containedVariables' (StatementIf _ con body : ss) =
 	nub' $ containedVariables con ++ containedVariables' body ++ containedVariables' ss
@@ -282,7 +282,8 @@ compileProgram statement = case compileStatement newGenerator statement of
 		tab (serialize value) ++
 		"} catch (m) {\n" ++
 		"\tconsole.log('An unexpected error occurred', m);\n" ++
-		"}\n"
+		"}\n" ++ 
+		"$Force($Call(main, [$Bang]));\n"
 
 
 

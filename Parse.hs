@@ -93,6 +93,11 @@ peekToken f = Parse $ \(_, ts) -> case ts of
 peekTokenName :: String -> Parse Bool
 peekTokenName name = peekToken (\t -> token t == name)
 
+peekFileEnd :: Parse Bool
+peekFileEnd = Parse $ \(_, ts) -> case ts of
+	[] -> Success True ts
+	_ -> Success False ts
+
 checkToken :: (Token -> Bool) -> Parse Bool
 checkToken f = Parse $ \(_, ts) -> case ts of
 	[] -> Success False ts
