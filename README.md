@@ -12,7 +12,7 @@ The compiler is written in Haskell, with no other external dependencies. I plan 
 ### Hello, world!
 ```
 func main! {
-	putStr "Hello, world."!;
+	putStr "Hello, world"!;
 }
 ```
 ### Simple math
@@ -61,7 +61,7 @@ func main! {
 ```
 ### Higher-Order Functions
 ```
-func twice (f : ! -> Void) ! {
+func twice (f : ! -> Void)! {
 	f!;
 	f!;
 }
@@ -115,7 +115,8 @@ func add (a : Pair) (b : Pair) : Pair {
 }
 
 func printPair (p : Pair)! {
-	putStr ("(" ++ show p.x ++ ", " ++ show p.y ++ ")")!;
+	var str : String = "(" ++ show p.x ++ ", " ++ show p.y ++ ")";
+	putStr str!;
 }
 
 func main! {
