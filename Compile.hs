@@ -40,6 +40,7 @@ data I
 	| ICall I [I]
 	| IForce I
 	| IPartial FunctionID Int [I]
+	| IConstructor String [(String, I)]
 	| IAssign String I
 	| IVar String
 	| IVarAssign String I
@@ -69,6 +70,8 @@ serialize (ILiteral s) = s
 serialize (ICall f a) = "$Call(" ++ serialize f ++ ", [" ++ intercalate ", " (map serialize a) ++ "])"
 serialize (IForce x) = "$Force(" ++ serialize x ++ ")"
 serialize (IPartial funID capacity args) = "$Partial(" ++ (serialize $ compileID funID) ++ ", " ++ show capacity ++ ", [" ++ intercalate ", " (map serialize args) ++ "])"
+serialize (IConstructor name fields) = "$Constructor(" ++ show name ++ ", [" ++ intercalate ", " (map field fields) ++ "])" where
+	field (f, t) = "{name: " ++ show f ++ ", value: " ++ serialize t ++ "}"
 serialize (IAssign v e) = v ++ " = " ++ serialize e ++ ";\n"
 serialize (IVar v) = "var " ++ v ++ ";\n"
 serialize (IVarAssign v e) = "var " ++ v ++ " = " ++ serialize e ++ ";\n"

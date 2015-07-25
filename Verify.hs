@@ -3,6 +3,7 @@ module Verify where
 
 import Control.Applicative
 import Expression hiding(returnType, arguments, funcName, body)
+import Data.List(intercalate)
 import ParseType
 import Lex
 
@@ -179,6 +180,11 @@ getExpressionType scope (ExpressionPrefix op arg) = do
 getExpressionType scope (ExpressionConstructor name fields) = case lookupTypeDeclaration (token name) scope of
 	Nothing -> flunk name $ "type `" ++ token name ++ "` is not declared"
 	Just fieldTypes -> do
+		case filter (\(f,_) -> not $ f `elem` map (token . fst) fields) fieldTypes of
+			[] -> return ()
+			[one] -> flunk name $ "field `" ++ fst one ++ "` of type `" ++ token name ++ "` is never assigned"
+			several -> flunk name $ "fields " ++ intercalate ", " (map (\n -> "`" ++ fst n ++ "`") several) ++ " of type `" ++ token name ++ "` are never assigned"
+		if length fields == length fieldTypes then return () else flunk name $ "some fields for constructor of type `" ++ token name ++ "` are assigned twice"
 		mapM_ (uncurry $ checkField fieldTypes) fields
 		return (makeType $ token name)
 	where
