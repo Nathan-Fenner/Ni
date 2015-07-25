@@ -68,7 +68,8 @@ parseConstructor = do
 
 parseAtom :: Parse Expression
 parseAtom
-	= parseIdentifier
+	= parseConstructor
+	||| parseIdentifier
 	||| parseIntegerLiteral
 	||| parseDecimalLiteral
 	||| parseStringLiteral
