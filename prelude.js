@@ -135,4 +135,9 @@ var putStr = $Partial(function(thunk, $Bang) {
 	return $Unit;
 }, 2, []);
 
+var show = $Partial(function(thunk) {
+	var value = $Force(thunk);
+	return value + "";
+}, 1, []);
+
 // End of Foreign

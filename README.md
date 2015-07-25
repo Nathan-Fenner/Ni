@@ -96,13 +96,30 @@ func main! {
 	many (print 3)!;
 }
 ```
+### Structs (a WIP)
+```
+struct Pair {
+	x : Int;
+	y : Int;
+}
+
+func add (a : Pair) (b : Pair) : Pair {
+	return Pair{x = a.x + b.x, y = a.y + b.y};
+}
+
+func printPair (p : Pair)! {
+	putStr ("(" ++ show p.x ++ ", " ++ show p.y ++ ")")!;
+}
+
+func main! {
+	printPair (add Pair{x = 3, y = 7} Pair{x = 2, y = 1})!;
+}
+```
 Nickel implements "implicit parameters" rather than closures for functions.
 This means that changing variables after a function definition won't have any effect on that function's behavior.
 
 ## Planned, but Non-Yet-Implemented Features (aka TODO)
 
-* Compound datastructures
-* Defining your own types
 * Parametric polymorphism
 * Type inference
 * A standard library

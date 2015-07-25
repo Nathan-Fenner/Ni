@@ -321,6 +321,7 @@ topScope =
 		[ ("Void", []), ("Int", []), ("String", []), ("Bool", []) ]
 		[ (Token "print" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` TypeBangArrow (makeType "Void"))
 		, (Token "putStr" (FileEnd "^") Identifier, makeType "String" `TypeArrow` TypeBangArrow (makeType "Void"))
+		, (Token "show" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` makeType "String")
 		]
 
 verifyProgram :: Statement -> Check ()
