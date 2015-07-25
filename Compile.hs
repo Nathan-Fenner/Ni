@@ -70,8 +70,8 @@ serialize (ILiteral s) = s
 serialize (ICall f a) = "$Call(" ++ serialize f ++ ", [" ++ intercalate ", " (map serialize a) ++ "])"
 serialize (IForce x) = "$Force(" ++ serialize x ++ ")"
 serialize (IPartial funID capacity args) = "$Partial(" ++ (serialize $ compileID funID) ++ ", " ++ show capacity ++ ", [" ++ intercalate ", " (map serialize args) ++ "])"
-serialize (IConstructor name fields) = "$Constructor(" ++ show name ++ ", [" ++ intercalate ", " (map field fields) ++ "])" where
-	field (f, t) = "{name: " ++ show f ++ ", value: " ++ serialize t ++ "}"
+serialize (IConstructor name fields) = "$Constructor(" ++ show name ++ ", {" ++ intercalate ", " (map field fields) ++ "})" where
+	field (f, t) = f ++ ": " ++ serialize t
 serialize (IAssign v e) = v ++ " = " ++ serialize e ++ ";\n"
 serialize (IVar v) = "var " ++ v ++ ";\n"
 serialize (IVarAssign v e) = "var " ++ v ++ " = " ++ serialize e ++ ";\n"
@@ -151,6 +151,7 @@ containedVariables (ExpressionCall fun args) = nub' $ containedVariables fun ++ 
 containedVariables ExpressionFunc{arguments, body} = containedVariables' body `less` map (token . fst) arguments
 containedVariables (ExpressionOp left _ right) = nub' $ containedVariables left ++ containedVariables right
 containedVariables (ExpressionPrefix _ arg) = containedVariables arg
+containedVariables (ExpressionConstructor _ fields) = nub' $ concat $ map (containedVariables . snd) fields
 
 containedVariables' :: [Statement] -> [String]
 containedVariables' (StatementAssign _ value : ss) = nub' $ containedVariables value ++ containedVariables' ss
@@ -173,7 +174,7 @@ containedVariables' (StatementLet _ body : ss) =
 		++ [ token funcName | StatementFunc{ funcName } <- body ]
 containedVariables' (StatementFunc{ funcName, argumentsStatement, bodyStatement } : ss) =
 	(nub' $ containedVariables' bodyStatement ++ containedVariables' ss) `less` ( token funcName : map (token . fst) argumentsStatement)
--- containedVariables' (s : _) = error $ show s
+containedVariables' (StatementStruct{}:ss) = containedVariables' ss
 containedVariables' [] = []
 
 compileExpression :: IDGenerator -> Expression -> Compiled (IDGenerator, I)
@@ -204,6 +205,9 @@ compileExpression gen (ExpressionOp left op right) = do
 compileExpression gen (ExpressionPrefix op arg) = do
 	(gen', arg') <- compileExpression gen arg
 	return (gen', ICall (IName $ "$Prefix[" ++ show (token op) ++ "]") [arg'])
+compileExpression gen (ExpressionConstructor name fields) = do
+	(gen', fieldValues) <- mapGen gen (map snd fields)
+	return (gen', IConstructor (token name) $ zip (map (token . fst) fields) fieldValues)
 
 compileStatement :: IDGenerator -> Statement -> Compiled (IDGenerator, I)
 compileStatement gen (StatementAssign var value) = do
@@ -273,9 +277,10 @@ compileStatement gen (StatementLet _ block) = do
 		(mgen', i') <- makeContext mgen i
 		(mgen'', is') <- makeContexts mgen' is
 		return (mgen'', i' : is')
-compileStatement mgen StatementFunc{funcToken, funcName, argumentsStatement, funcBangStatement, returnTypeStatement, bodyStatement} =
-	compileStatement mgen $ StatementLet (error "let token is useless")
+compileStatement gen StatementFunc{funcToken, funcName, argumentsStatement, funcBangStatement, returnTypeStatement, bodyStatement} =
+	compileStatement gen $ StatementLet (error "let token is useless")
 		[StatementVarAssign funcName (error "type is useless") $ ExpressionFunc funcToken argumentsStatement funcBangStatement returnTypeStatement bodyStatement]
+compileStatement gen (StatementStruct _ name _) = return (gen, IComment $ "struct " ++ token name)
 	-- we will pass our implicits off as the shared "context" for evaluation.
 
 compileProgram :: Statement -> String

@@ -20,6 +20,9 @@ function $Partial(fun, capacity, args) {
 function $Call(fun, args) {
 	return {type: "call", fun:fun, args: args};
 }
+function $Constructor(type, fields) {
+	return {type:"constructor", name: type, fields: fieldMap};
+}
 function $Force(e) {
 	if (typeof e === "function") {
 		throw { message: "tried to a force a function", fun:e };
@@ -28,7 +31,8 @@ function $Force(e) {
 		|| typeof e === "string"
 		|| typeof e === "boolean"
 		|| e.type === "bang"
-		|| e.type === "unit") {
+		|| e.type === "unit"
+		|| e.type === "constructor") {
 		return e; // these are properly atomic values
 	}
 	if (e.type === "partial") {
