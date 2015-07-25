@@ -22,6 +22,7 @@ data Expression
 		}
 	| ExpressionOp Expression Token Expression
 	| ExpressionPrefix Token Expression
+	| ExpressionConstructor Token [(Token, Expression)]
 	deriving Show
 
 parseIdentifier :: Parse Expression
@@ -46,6 +47,25 @@ parseParens = do
 	_ <- expectSpecial ")" "expected `)` to match `(`" -- TODO: add location of matching paren
 	return e
 
+parseConstructor :: Parse Expression
+parseConstructor = do
+	name <- expectIdentifier "name"
+	_ <- expectSpecial "{" "expected `{` to open constructor arguments"
+	block <- interior
+	_ <- expectSpecial "}" "expected `}` to close constructor arguments"
+	return $ ExpressionConstructor name block
+	where
+	interior = do -- TODO: allow empty constructors
+		first <- element
+		rest <- parseManyUntil (peekTokenName "}") (expectSpecial "," "expected `,` to separate field entries" >> element)
+		return $ first : rest
+	element :: Parse (Token, Expression)
+	element = do
+		name <- expectIdentifier "expected identifier to name field"
+		_ <- expectSpecial "=" $ "expected `=` to follow field `" ++ token name ++ "` in constructor"
+		value <- parseExpression
+		return (name, value)
+
 parseAtom :: Parse Expression
 parseAtom
 	= parseIdentifier
@@ -62,7 +82,7 @@ parseBang = fmap ExpressionBang $ expectSpecial "!" "bang"
 
 parseCall :: Parse Expression
 parseCall = do
-	fun <- parseAtom
+	fun <- parseAtom ||| (parseBang >> reject "a `!` can be used only as a formal parameter")
 	args <- parseMany (parseBang ||| parseAtom)
 	return $ case args of
 		[] -> fun -- This cuts down on the number of non-calls everywhere
@@ -158,6 +178,7 @@ data Statement
 	| StatementBreak Token
 	| StatementLet Token [Statement]
 	| StatementFunc { funcToken :: Token, funcName :: Token, argumentsStatement :: [(Token, Type)], funcBangStatement :: Maybe Token, returnTypeStatement :: Maybe Type , bodyStatement :: [Statement] }
+	| StatementStruct Token Token [(Token, Type)]
 	deriving Show
 
 parseAssign :: Parse Statement
@@ -220,6 +241,25 @@ parseLet = do
 	-- it's better for parsing to just consume a block (and report good error messages)
 	block <- parseBlock
 	return $ StatementLet letToken block
+
+parseStruct :: Parse Statement
+parseStruct = do
+	structToken <- expectSpecial "struct" "expected `struct` to begin struct definition"
+	name <- expectIdentifier "expected struct name to follow `struct` token"
+	block <- structBody
+	return $ StatementStruct structToken name block
+	where
+	structBody = do
+		_ <- expectSpecial "{" "expected `{` to open struct definition block"
+		block <- parseManyUntil (peekTokenName "}") structMember
+		_ <- expectSpecial "}" "expected `}` to close struct definition block" -- TODO: matching
+		return block
+	structMember = do
+		name <- expectIdentifier "expected field name to appear in struct definition block"
+		_ <- expectSpecial ":" "expected `:` to follow field name to define field type"
+		t <- parseType ||| reject ("expected type to follow field name `" ++ token name ++ "` in struct definition")
+		_ <- expectSpecial ";" "expected `;` to end field definition in struct"
+		return (name, t)
 
 (^||) :: Monad m => m Bool -> m Bool -> m Bool
 x ^|| y = do
