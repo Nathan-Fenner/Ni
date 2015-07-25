@@ -96,6 +96,13 @@ func main! {
 	many (print 3)!;
 }
 ```
+When a function is defined in a function or any other lower scope,
+it implicitly accepts any variable in scope as an implicit parameter.
+In contrast to closures, changing any of these variables after the function's
+definition will have no effect on the function's behavior.
+The above will print 35 and then 15 (not 35 and then 6).
+
+Eliminating uncontrolled effects by preventing unintentional references is a major design goal of Nickel.
 ### Structs (a WIP)
 ```
 struct Pair {
@@ -115,10 +122,8 @@ func main! {
 	printPair (add Pair{x = 3, y = 7} Pair{x = 2, y = 1})!;
 }
 ```
-Nickel implements "implicit parameters" rather than closures for functions.
-This means that changing variables after a function definition won't have any effect on that function's behavior.
 
-## Planned, but Non-Yet-Implemented Features (aka TODO)
+## Planned Features
 
 * Parametric polymorphism
 * Type inference
