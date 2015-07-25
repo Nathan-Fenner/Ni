@@ -41,6 +41,7 @@ data I
 	| IForce I
 	| IPartial FunctionID Int [I]
 	| IConstructor String [(String, I)]
+	| IDot I String
 	| IAssign String I
 	| IVar String
 	| IVarAssign String I
@@ -72,6 +73,7 @@ serialize (IForce x) = "$Force(" ++ serialize x ++ ")"
 serialize (IPartial funID capacity args) = "$Partial(" ++ (serialize $ compileID funID) ++ ", " ++ show capacity ++ ", [" ++ intercalate ", " (map serialize args) ++ "])"
 serialize (IConstructor name fields) = "$Constructor(" ++ show name ++ ", {" ++ intercalate ", " (map field fields) ++ "})" where
 	field (f, t) = f ++ ": " ++ serialize t
+serialize (IDot left name) = "$Dot(" ++ serialize left ++ ", " ++ show name ++ ")"
 serialize (IAssign v e) = v ++ " = " ++ serialize e ++ ";\n"
 serialize (IVar v) = "var " ++ v ++ ";\n"
 serialize (IVarAssign v e) = "var " ++ v ++ " = " ++ serialize e ++ ";\n"
@@ -152,6 +154,7 @@ containedVariables ExpressionFunc{arguments, body} = containedVariables' body `l
 containedVariables (ExpressionOp left _ right) = nub' $ containedVariables left ++ containedVariables right
 containedVariables (ExpressionPrefix _ arg) = containedVariables arg
 containedVariables (ExpressionConstructor _ fields) = nub' $ concat $ map (containedVariables . snd) fields
+containedVariables (ExpressionDot left _) = containedVariables left
 
 containedVariables' :: [Statement] -> [String]
 containedVariables' (StatementAssign _ value : ss) = nub' $ containedVariables value ++ containedVariables' ss
@@ -208,6 +211,9 @@ compileExpression gen (ExpressionPrefix op arg) = do
 compileExpression gen (ExpressionConstructor name fields) = do
 	(gen', fieldValues) <- mapGen gen (map snd fields)
 	return (gen', IConstructor (token name) $ zip (map (token . fst) fields) fieldValues)
+compileExpression gen (ExpressionDot left name) = do
+	(gen', left') <- compileExpression gen left
+	return (gen', IDot left' (token name))
 
 compileStatement :: IDGenerator -> Statement -> Compiled (IDGenerator, I)
 compileStatement gen (StatementAssign var value) = do

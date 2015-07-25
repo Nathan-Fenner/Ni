@@ -54,6 +54,7 @@ expressionAt (ExpressionStringLiteral t) = t
 expressionAt (ExpressionBoolLiteral t) = t
 expressionAt (ExpressionBang t) = t
 expressionAt (ExpressionCall e _) = expressionAt e
+expressionAt (ExpressionDot atom _) = expressionAt atom
 expressionAt (ExpressionFunc { anonFuncToken = t }) = t
 expressionAt (ExpressionOp left _ _) = expressionAt left
 expressionAt (ExpressionPrefix op _) = op
@@ -197,7 +198,19 @@ getExpressionType scope (ExpressionConstructor name fields) = case lookupTypeDec
 	lookUp k m = case [v | (k', v) <- m, k == k'] of
 		[] -> Nothing
 		(v : _) -> Just v
-
+getExpressionType scope (ExpressionDot left field) = do
+	leftType <- getExpressionType scope left
+	case leftType of
+		TypeName name -> case lookupTypeDeclaration (token name) scope of
+			Nothing -> flunk field $ "compiler error - can't index unknown type `" ++ token name ++ "`"
+			Just fields -> case lookUp (token field) fields of
+				Nothing -> flunk field $ "type `" ++ token name ++ "` has no field called `" ++ show field ++ "`"
+				Just t -> return t
+		_ -> flunk field $ "cannot access field (`" ++ token field ++ "`) on non-struct type `" ++ niceType leftType ++ "`"
+	where
+	lookUp k m = case [v | (k', v) <- m, k == k'] of
+		[] -> Nothing
+		(v : _) -> Just v
 
 
 verifyTypeScope :: Scope -> Type -> Check ()

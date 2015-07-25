@@ -13,6 +13,7 @@ data Expression
 	| ExpressionBoolLiteral Token
 	| ExpressionBang Token
 	| ExpressionCall Expression [Expression]
+	| ExpressionDot Expression Token
 	| ExpressionFunc
 		{ anonFuncToken :: Token
 		, arguments :: [(Token, Type)]
@@ -78,13 +79,22 @@ parseAtom
 	||| parseFunc
 	||| reject "expected an expression here; maybe you forgot a semicolon?"
 
+parseDot :: Parse Expression
+parseDot = do
+	atom <- parseAtom
+	dots <- parseManyUntil (fmap not $ peekTokenName ".") (expectSpecial "." "dots begin accesses" >> expectIdentifier "an identifier must follow a member access with `.`")
+	return $ wrapUp atom dots
+	where
+	wrapUp atom [] = atom
+	wrapUp atom (name : rest) = wrapUp (ExpressionDot atom name) rest
+
 parseBang :: Parse Expression
 parseBang = fmap ExpressionBang $ expectSpecial "!" "bang"
 
 parseCall :: Parse Expression
 parseCall = do
-	fun <- parseAtom ||| (parseBang >> reject "a `!` can be used only as a formal parameter")
-	args <- parseMany (parseBang ||| parseAtom)
+	fun <- parseDot ||| (parseBang >> reject "a `!` can be used only as a formal parameter")
+	args <- parseMany (parseBang ||| parseDot)
 	return $ case args of
 		[] -> fun -- This cuts down on the number of non-calls everywhere
 		_ -> ExpressionCall fun args
