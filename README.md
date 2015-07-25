@@ -111,7 +111,7 @@ struct Pair {
 }
 
 func add (a : Pair) (b : Pair) : Pair {
-	return Pair{x = a.x + b.x, y = a.y + b.y};
+	return {Pair | x = a.x + b.x, y = a.y + b.y};
 }
 
 func printPair (p : Pair)! {
@@ -120,7 +120,7 @@ func printPair (p : Pair)! {
 }
 
 func main! {
-	printPair (add Pair{x = 3, y = 7} Pair{x = 2, y = 1})!;
+	printPair (add {Pair | x = 3, y = 7} {Pair | x = 2, y = 1})!;
 }
 ```
 

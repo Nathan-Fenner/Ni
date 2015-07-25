@@ -1,14 +1,18 @@
-if 1 == 1 {
-	var x : Int = 4;
-	let {
-		var m : Int = linCap 3;
-		func linCap (n : Int) : Int {
-			if n <= 100 {
-				return n;
-			}
-			return 100 + m * (n - 100);
-		}
-	}
-	print (linCap 5)!;
-	print (linCap 105)!;
+
+struct Pair {
+	x : Int;
+	y : Int;
 }
+
+func add (a : Pair) (b : Pair) : Pair {
+	return {Pair | x = a.x + b.x, y = a.y + b.y};
+}
+
+func printPair (p : Pair)! {
+	putStr ("(" ++ show p.x ++ ", " ++ show p.y ++ ")")!;
+}
+
+func main! {
+	printPair (add {Pair | x = 3, y = 7} {Pair | x = 2, y = 1})!;
+}
+

@@ -37,11 +37,11 @@ curryList (TypeArrow left arg) = let (args, r) = curryList arg in (left:args, r)
 curryList t = ([], t)
 
 parseTypeName :: Parse Type
-parseTypeName = fmap TypeName (expectIdentifier "type name")
+parseTypeName = soften $ fmap TypeName (expectIdentifier "type name")
 
 parseTypeParens :: Parse Type
 parseTypeParens = do
-	_ <- expectSpecial "(" "open paren"
+	_ <- soften $ expectSpecial "(" "open paren"
 	t <- parseType
 	_ <- expectSpecial ")" "expected `)` to close `(`" -- TODO: add location of matching paren
 	return t

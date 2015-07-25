@@ -6,11 +6,11 @@ import Control.Applicative
 
 data Parse a = Parse { run :: (FilePath, [Token]) -> Result a }
 
-data Result a = Success a [Token] | Error String [Token] Location deriving Show
+data Result a = Success a [Token] | Error Bool String [Token] Location deriving Show
 
 instance Functor Result where
 	fmap f (Success x ts) = Success (f x) ts
-	fmap _ (Error msg rest loc) = Error msg rest loc
+	fmap _ (Error hard msg rest loc) = Error hard msg rest loc
 
 instance Functor Parse where
 	fmap f p = Parse $ \t -> fmap f $ run p t
@@ -18,23 +18,29 @@ instance Functor Parse where
 instance Applicative Parse where
 	pure a = Parse $ \(_, tokens) -> Success a tokens
 	pf <*> pv = Parse $ \(file, tokens) -> case run pf (file, tokens) of
-		Error e rest loc -> Error e rest loc -- an error has occurred
+		Error hard e rest loc -> Error hard e rest loc -- an error has occurred
 		Success f rest -> run (fmap f pv) (file, rest)
 
 instance Monad Parse where
 	return = pure
 	x >>= f = Parse $ \(file, tokens) -> case run x (file, tokens) of
-		Error e rest loc -> Error e rest loc -- an error has occurred
+		Error hard e rest loc -> Error hard e rest loc -- an error has occurred
 		Success v rest -> run (f v) (file, rest)
+
+soften :: Parse a -> Parse a
+soften f = Parse $ \tokens -> case run f tokens of
+	Error True msg rest loc -> Error False msg rest loc
+	x -> x
 
 (|||) :: Parse a -> Parse a -> Parse a
 f ||| g = Parse $ \tokens -> case run f tokens of
-	Error _ _ _ -> run g tokens
+	Error False _ _ _ -> run g tokens
+	Error True msg rest loc -> Error True msg rest loc
 	x -> x
 
 (&&&) :: Parse x -> Parse a -> Parse a
 f &&& g = Parse $ \tokens -> case run f tokens of
-	Error msg rest loc -> Error msg rest loc
+	Error hard msg rest loc -> Error hard msg rest loc
 	_ -> run g tokens
 
 (???) :: Parse Bool -> (Parse a, Parse a) -> Parse a
@@ -46,7 +52,7 @@ accept :: Parse ()
 accept = return ()
 
 reject :: String -> Parse a
-reject msg = Parse $ \(file, tokens) -> Error msg tokens $ case tokens of
+reject msg = Parse $ \(file, tokens) -> Error True msg tokens $ case tokens of
 	[] -> FileEnd file
 	(t:_) -> at t
 
@@ -58,7 +64,7 @@ parseMany p = (do
 	) ||| return []
 
 parseMaybe :: Parse a -> Parse (Maybe a)
-parseMaybe p = fmap Just p ||| return Nothing
+parseMaybe p = fmap Just (soften p) ||| return Nothing
 
 peekMaybe :: Parse (Maybe Token)
 peekMaybe = Parse $ \(_, tokens) -> case tokens of
@@ -76,8 +82,8 @@ parseManyUntil cond p = parseManyWhile (fmap not cond) p
 
 expectToken :: (Token -> Bool) -> String -> Parse Token
 expectToken predicate msg = Parse $ \(file, tokens) -> case tokens of
-	[] -> Error msg [] (FileEnd file)
-	(t : ts) -> if predicate t then Success t ts else Error msg (t:ts) (at t)
+	[] -> Error True msg [] (FileEnd file)
+	(t : ts) -> if predicate t then Success t ts else Error True msg (t:ts) (at t)
 
 expectIdentifier :: String -> Parse Token
 expectIdentifier msg = expectToken (\t -> kind t == Identifier) ("expected identifier: " ++ msg)
@@ -107,7 +113,7 @@ checkTokenName :: String -> Parse Bool
 checkTokenName name = checkToken (\t -> token t == name)
 
 maybeCheckTokenName :: String -> Parse (Maybe Token)
-maybeCheckTokenName name = fmap Just (expectSpecial name "***") ||| return Nothing
+maybeCheckTokenName name = fmap Just (soften $ expectSpecial name "***") ||| return Nothing
 
 lookOperators :: [String] -> Parse (Maybe Token)
 lookOperators names = Parse $ \(_, ts) -> case ts of

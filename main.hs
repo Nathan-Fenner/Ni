@@ -34,4 +34,4 @@ main = do
 	case exampleParsed of
 		Success tree [] -> succeedParse tree
 		Success _tree rest -> putStrLn $ "didn't consume all input: " ++ show rest
-		Error message rest location -> failParse message rest location
+		Error _ message rest location -> failParse message rest location

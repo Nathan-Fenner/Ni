@@ -27,38 +27,35 @@ data Expression
 	deriving Show
 
 parseIdentifier :: Parse Expression
-parseIdentifier = fmap ExpressionIdentifier (expectIdentifier "name")
+parseIdentifier = soften $ fmap ExpressionIdentifier (expectIdentifier "name")
 
 parseIntegerLiteral :: Parse Expression
-parseIntegerLiteral = fmap ExpressionIntegerLiteral (expectToken (\t -> kind t == IntegerLiteral) "integer literal")
+parseIntegerLiteral = soften $ fmap ExpressionIntegerLiteral (expectToken (\t -> kind t == IntegerLiteral) "integer literal")
 
 parseDecimalLiteral :: Parse Expression
-parseDecimalLiteral = fmap ExpressionDecimalLiteral (expectToken (\t -> kind t == DecimalLiteral) "decimal literal")
+parseDecimalLiteral = soften $ fmap ExpressionDecimalLiteral (expectToken (\t -> kind t == DecimalLiteral) "decimal literal")
 
 parseStringLiteral :: Parse Expression
-parseStringLiteral = fmap ExpressionStringLiteral (expectToken (\t -> kind t == StringLiteral) "string literal")
+parseStringLiteral = soften $ fmap ExpressionStringLiteral (expectToken (\t -> kind t == StringLiteral) "string literal")
 
 parseBoolLiteral :: Parse Expression
-parseBoolLiteral = fmap ExpressionBoolLiteral $ (expectSpecial "true" "true") ||| (expectSpecial "false" "false")
+parseBoolLiteral = soften $ fmap ExpressionBoolLiteral $ (expectSpecial "true" "true") ||| (expectSpecial "false" "false")
 
 parseParens :: Parse Expression
 parseParens = do
-	_ <- expectSpecial "(" "open paren"
+	_ <- soften $ expectSpecial "(" "open paren"
 	e <- parseExpression
 	_ <- expectSpecial ")" "expected `)` to match `(`" -- TODO: add location of matching paren
 	return e
 
 parseConstructor :: Parse Expression
 parseConstructor = do
+	_ <- soften $ expectSpecial "{" "expected `{` to open constructor"
 	name <- expectIdentifier "name"
-	isConstructor <- peekTokenName "{"
-	if isConstructor then do
-		_ <- expectSpecial "{" "expected `{` to open constructor arguments"
-		block <- interior
-		_ <- expectSpecial "}" "expected `}` to close constructor arguments"
-		return $ ExpressionConstructor name block
-		else do
-			return $ ExpressionIdentifier name
+	_ <- expectSpecial "|" $ "expected `|` to follow constructor name `" ++ token name ++ "`" 
+	block <- interior
+	_ <- expectSpecial "}" "expected `}` to close constructor arguments"
+	return $ ExpressionConstructor name block
 	where
 	interior = do -- TODO: allow empty constructors
 		first <- element
@@ -73,8 +70,8 @@ parseConstructor = do
 
 parseAtom :: Parse Expression
 parseAtom
-	= parseConstructor
-	-- ||| parseIdentifier
+	=   parseConstructor
+	||| parseIdentifier
 	||| parseIntegerLiteral
 	||| parseDecimalLiteral
 	||| parseStringLiteral
@@ -93,12 +90,12 @@ parseDot = do
 	wrapUp atom (name : rest) = wrapUp (ExpressionDot atom name) rest
 
 parseBang :: Parse Expression
-parseBang = fmap ExpressionBang $ expectSpecial "!" "bang"
+parseBang = soften $ fmap ExpressionBang $ expectSpecial "!" "bang"
 
 parseCall :: Parse Expression
 parseCall = do
 	fun <- parseDot
-	args <- parseMany (parseBang ||| parseDot)
+	args <- parseMany (soften parseBang ||| soften parseDot)
 	return $ case args of
 		[] -> fun -- This cuts down on the number of non-calls everywhere
 		_ -> ExpressionCall fun args
@@ -114,7 +111,7 @@ parseFuncArg = do
 
 parseFunc :: Parse Expression
 parseFunc = do
-	funcWord <- expectSpecial "func" "func begins function declaration"
+	funcWord <- soften $ expectSpecial "func" "func begins function declaration"
 	funcArgs <- parseManyUntil (peekTokenName ":" ^|| peekTokenName "{" ^|| peekTokenName "!") parseFuncArg
 	bang <- maybeCheckTokenName "!"
 	returns <- parseMaybe (expectSpecial ":" "(optional) return type" >> parseType)
@@ -198,8 +195,8 @@ data Statement
 
 parseAssign :: Parse Statement
 parseAssign = do
-	name <- expectIdentifier "expected name to begin assignment"
-	_ <- expectSpecial "=" "expected assignment operator `=` to follow variable name"
+	name <- soften $ expectIdentifier "expected name to begin assignment"
+	_ <- soften $ expectSpecial "=" "expected assignment operator `=` to follow variable name"
 	right <- parseExpression
 	_ <- expectSpecial ";" "expected `;` to terminate statement"
 	return $ StatementAssign name right

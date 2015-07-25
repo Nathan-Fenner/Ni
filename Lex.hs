@@ -113,7 +113,7 @@ lex' (c:cs) loc
 	where
 	ops :: String
 	ops = "+-*/%=<>#$^&|?:"
-	specialOperators = ["->", "=", ":"]
+	specialOperators = ["->", "=", ":", "|"]
 	identStart :: String
 	identStart = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 	identContinue :: String
