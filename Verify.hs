@@ -44,7 +44,7 @@ statementAt (StatementReturn t _) = t
 statementAt (StatementBreak t) = t
 statementAt (StatementLet t _) = t
 statementAt (StatementFunc {funcToken = t}) = t
-statementAt (StatementStruct t _ _) = t
+statementAt (StatementStruct t _ _ _) = t
 
 expressionAt :: Expression -> Token
 expressionAt (ExpressionIdentifier t) = t
@@ -62,7 +62,7 @@ expressionAt (ExpressionConstructor t _) = t
 
 data Scope = Scope
 	{ scopeReturnType :: Type -- return type
-	, scopeTypes :: [(String, [(String, Type)])] -- type names in scope
+	, scopeTypes :: [(String, [String], [(String, Type)])] -- type names in scope
 	, scopeStack :: [(Token, Type)] -- stack & globals
 	} deriving Show
 
@@ -78,20 +78,20 @@ addTypes :: [(Token, Type)] -> Scope -> Scope
 addTypes [] scope = scope
 addTypes ((n, t) : rest) scope = addTypes rest $ addType n t scope
 
-declareType :: String -> [(String, Type)] -> Scope -> Scope
-declareType struct args (Scope returns types scope) = Scope returns ((struct, args) : types) scope
+declareType :: String -> [String] -> [(String, Type)] -> Scope -> Scope
+declareType struct generics args (Scope returns types scope) = Scope returns ((struct, generics, args) : types) scope
 
-declareTypes :: [(String, [(String, Type)])] -> Scope -> Scope
+declareTypes :: [(String, [String], [(String, Type)])] -> Scope -> Scope
 declareTypes [] scope = scope
-declareTypes (p:ps) scope = declareTypes ps $ uncurry declareType p scope
+declareTypes (p:ps) scope = declareTypes ps $ (\(x,y,z) -> declareType x y z) p scope
 
 isTypeDeclared :: String -> Scope -> Bool
-isTypeDeclared n (Scope _ types _) = n `elem` map fst types
+isTypeDeclared n (Scope _ types _) = n `elem` map (\(n',_,_) -> n') types
 
-lookupTypeDeclaration :: String -> Scope -> Maybe [(String, Type)]
-lookupTypeDeclaration name (Scope _ types _) = case [ fields | (name', fields) <- types, name == name' ] of
+lookupTypeDeclaration :: String -> Scope -> Maybe ([String], [(String, Type)])
+lookupTypeDeclaration name (Scope _ types _) = case [ (generics, fields) | (name', generics, fields) <- types, name == name' ] of
 	[] -> Nothing
-	(fields:_) -> Just fields
+	(body:_) -> Just body
 
 mustReturn :: Scope -> Type
 mustReturn (Scope r _ _) = r
@@ -180,7 +180,7 @@ getExpressionType scope (ExpressionPrefix op arg) = do
 		_ -> error $ "compiler error: undefined prefix operator `" ++ token op ++ "` (please contact the repository owner at github.com/Nathan-Fenner/Ni)"
 getExpressionType scope (ExpressionConstructor name fields) = case lookupTypeDeclaration (token name) scope of
 	Nothing -> flunk name $ "type `" ++ token name ++ "` is not declared"
-	Just fieldTypes -> do
+	Just (generics, fieldTypes) -> do
 		case filter (\(f,_) -> not $ f `elem` map (token . fst) fields) fieldTypes of
 			[] -> return ()
 			[one] -> flunk name $ "field `" ++ fst one ++ "` of type `" ++ token name ++ "` is never assigned"
@@ -203,7 +203,7 @@ getExpressionType scope (ExpressionDot left field) = do
 	case leftType of
 		TypeName name -> case lookupTypeDeclaration (token name) scope of
 			Nothing -> flunk field $ "compiler error - can't index unknown type `" ++ token name ++ "`"
-			Just fields -> case lookUp (token field) fields of
+			Just (generics, fields) -> case lookUp (token field) fields of
 				Nothing -> flunk field $ "type `" ++ token name ++ "` has no field called `" ++ show field ++ "`"
 				Just t -> return t
 		_ -> flunk field $ "cannot access field (`" ++ token field ++ "`) on non-struct type `" ++ niceType leftType ++ "`"
@@ -290,7 +290,7 @@ verifyStatementType scope (StatementLet _ body) = do
 	isStruct StatementStruct{} = True
 	isStruct _ = False
 	declaredTypes = concat $ map go body where
-		go (StatementStruct _ structName structArgs) = [(token structName, map (\(f, t) -> (token f, t)) structArgs)]
+		go (StatementStruct _ structName structGenerics structArgs) = [(token structName, map token structGenerics, map (\(f, t) -> (token f, t)) structArgs)]
 		go _ = []
 	verifyLet (StatementVarAssign varName varType _) = Pass [(varName, varType)]
 	verifyLet (StatementFunc _funcToken funcName arguments bang returns _body) = Pass [(funcName, funcType)] where
@@ -305,9 +305,9 @@ verifyStatementType scope (StatementLet _ body) = do
 			Just _ -> TypeBangArrow returnType'
 	verifyLet StatementStruct{} = Pass []
 	verifyLet s = flunk (statementAt s) $ "only variable definitions, function declarations, and type definitions are allowed in let blocks"
-verifyStatementType scope (StatementStruct _ structName fields)
+verifyStatementType scope (StatementStruct _ structName generics fields)
 	|token structName `isTypeDeclared` scope = flunk structName $ "type `" ++ token structName ++ "` has already been declared"
-	|otherwise = return $ declareType (token structName) (map (\(f,t) -> (token f, t)) fields) scope
+	|otherwise = return $ declareType (token structName) (map token generics) (map (\(f,t) -> (token f, t)) fields) scope
 
 verifyStatementBlock :: Scope -> [Statement] -> Check Scope
 verifyStatementBlock scope [] = return scope
@@ -318,7 +318,7 @@ verifyStatementBlock scope (s : ss) = do
 topScope :: Scope
 topScope =
 	Scope (makeType "Void")
-		[ ("Void", []), ("Int", []), ("String", []), ("Bool", []) ]
+		[ ("Void", [], []), ("Int", [], []), ("String", [], []), ("Bool", [], []) ]
 		[ (Token "print" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` TypeBangArrow (makeType "Void"))
 		, (Token "putStr" (FileEnd "^") Identifier, makeType "String" `TypeArrow` TypeBangArrow (makeType "Void"))
 		, (Token "show" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` makeType "String")

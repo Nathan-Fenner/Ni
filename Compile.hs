@@ -288,7 +288,7 @@ compileStatement gen (StatementLet _ block) = do
 compileStatement gen StatementFunc{funcToken, funcName, argumentsStatement, funcBangStatement, returnTypeStatement, bodyStatement} =
 	compileStatement gen $ StatementLet (error "let token is useless")
 		[StatementVarAssign funcName (error "type is useless") $ ExpressionFunc funcToken argumentsStatement funcBangStatement returnTypeStatement bodyStatement]
-compileStatement gen (StatementStruct _ name _) = return (gen, IComment $ "struct " ++ token name)
+compileStatement gen (StatementStruct _ name generics _) = return (gen, IComment $ "struct " ++ token name ++ concat (map ((" " ++) . token) generics) )
 	-- we will pass our implicits off as the shared "context" for evaluation.
 
 compileProgram :: Statement -> String

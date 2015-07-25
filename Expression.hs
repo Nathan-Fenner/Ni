@@ -190,7 +190,7 @@ data Statement
 	| StatementBreak Token
 	| StatementLet Token [Statement]
 	| StatementFunc { funcToken :: Token, funcName :: Token, argumentsStatement :: [(Token, Type)], funcBangStatement :: Maybe Token, returnTypeStatement :: Maybe Type , bodyStatement :: [Statement] }
-	| StatementStruct Token Token [(Token, Type)]
+	| StatementStruct Token Token [Token] [(Token, Type)]
 	deriving Show
 
 parseAssign :: Parse Statement
@@ -258,8 +258,9 @@ parseStruct :: Parse Statement
 parseStruct = do
 	structToken <- expectSpecial "struct" "expected `struct` to begin struct definition"
 	name <- expectIdentifier "expected struct name to follow `struct` token"
+	generics <- parseManyUntil (peekTokenName "{") (expectIdentifier $ "expected only type parameters after struct name `" ++ token name ++ "` and before body")
 	block <- structBody
-	return $ StatementStruct structToken name block
+	return $ StatementStruct structToken name generics block
 	where
 	structBody = do
 		_ <- expectSpecial "{" "expected `{` to open struct definition block"
