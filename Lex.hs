@@ -102,14 +102,14 @@ lex' (c:cs) loc
 	|c == '\r' = lex' cs (carriageReturn loc)
 	|c == '\n' = lex' cs (newline loc)
 	|c == '\t' = lex' cs (tab loc)
-	|c `elem` ";{}()[].!" = Token [c] loc Special : lex' cs (space loc)
+	|c `elem` ";{}()[].,!" = Token [c] loc Special : lex' cs (space loc)
 	|c `elem` ops = let (before, after) = splitWhile (`elem` ops) (c:cs) in
 		Token before loc (if before `elem` specialOperators then Special else Operator) : lex' after (forward (length before) loc)
 	|c `elem` identStart = let (before, after) = splitWhile (`elem` identContinue) (c:cs) in
 		Token before loc (wordType before) : lex' after (forward (length before) loc)
 	|c == '"' = lexString cs "" loc loc
 	|c `elem` ['0'..'9'] = lexNumber (c:cs) loc
-	|otherwise = error $ "Invalid character `" ++ [c] ++ "` in string"
+	|otherwise = error $ "Invalid character `" ++ [c] ++ "` in source"
 	where
 	ops :: String
 	ops = "+-*/%=<>#$^&|?:"
@@ -125,4 +125,4 @@ wordType word
 	|otherwise = Identifier
 
 specialWords :: [String]
-specialWords = ["func", "while", "if", "else", "for", "var", "let", "return", "True", "False"]
+specialWords = ["func", "while", "if", "else", "for", "var", "let", "struct", "return", "True", "False"]

@@ -21,7 +21,10 @@ function $Call(fun, args) {
 	return {type: "call", fun:fun, args: args};
 }
 function $Constructor(type, fields) {
-	return {type:"constructor", name: type, fields: fieldMap};
+	return {type:"constructor", name: type, fields: fields};
+}
+function $Dot(value, field) {
+	return {type:"dot", value:value, field:field};
 }
 function $Force(e) {
 	if (typeof e === "function") {
@@ -40,11 +43,18 @@ function $Force(e) {
 			return e;
 		} else {
 			if (e.args.length > e.capacity) {
-				throw { message: "e.capacity < e.args.length", e };
+				throw { message: "e.capacity < e.args.length", e: e };
 			}
 			// An invokation is required
 			return $Force( e.fun.apply(undefined, e.args) );
 		}
+	}
+	if (e.type === "dot") {
+		var value = $Force(e.value);
+		if (value.type !== "constructor") {
+			throw { message: "expected dot to be performed only on constructor", e: e, value: value };
+		}
+		return $Force(value.fields[e.field]);
 	}
 	if (e.type === "call") {
 		// We have to force its function, then apply arguments one-by-one.

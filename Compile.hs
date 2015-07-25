@@ -245,16 +245,18 @@ compileStatement gen (StatementReturn _ (Just value)) = do
 compileStatement gen (StatementReturn _ Nothing) = return (gen, IReturn (IName "$Unit"))
 compileStatement gen (StatementBreak _) = return (gen, IBreak)
 compileStatement gen (StatementLet _ block) = do
-	(gen', values) <- valuesOf gen block
+	(gen', values) <- valuesOf gen $ filter (not . isStruct) block
 	(gen'', contextualValues) <- makeContexts gen' values
 	let letDeclares = map (\(n, v) -> IVarAssign n v) (zip letLetNames contextualValues)
 	return (gen'', ISequence $ [IComment "begin let"] ++ (letDeclares ++ letAssembles) ++ [IComment "end"] )
 	where
+	isStruct StatementStruct{} = True
+	isStruct _ = False
 	letNames :: [String]
-	letNames = map nameOf block where
+	letNames = map nameOf $ filter (not . isStruct) block where
 		nameOf (StatementVarAssign var _ _) = token var
 		nameOf StatementFunc{funcName} = token funcName
-		nameOf _ = error "not a valid let-member"
+		nameOf s = error $ "not a valid let-member: " ++ show s
 	letLetNames :: [String]
 	letLetNames = map ("$Let_" ++) letNames
 	letAssembles = [ IVarAssign n (ICall (IName $ "$Let_" ++ n) (map IName $ implicits ++ letLetNames)) | n <- letNames ]

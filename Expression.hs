@@ -51,10 +51,14 @@ parseParens = do
 parseConstructor :: Parse Expression
 parseConstructor = do
 	name <- expectIdentifier "name"
-	_ <- expectSpecial "{" "expected `{` to open constructor arguments"
-	block <- interior
-	_ <- expectSpecial "}" "expected `}` to close constructor arguments"
-	return $ ExpressionConstructor name block
+	isConstructor <- peekTokenName "{"
+	if isConstructor then do
+		_ <- expectSpecial "{" "expected `{` to open constructor arguments"
+		block <- interior
+		_ <- expectSpecial "}" "expected `}` to close constructor arguments"
+		return $ ExpressionConstructor name block
+		else do
+			return $ ExpressionIdentifier name
 	where
 	interior = do -- TODO: allow empty constructors
 		first <- element
@@ -70,7 +74,7 @@ parseConstructor = do
 parseAtom :: Parse Expression
 parseAtom
 	= parseConstructor
-	||| parseIdentifier
+	-- ||| parseIdentifier
 	||| parseIntegerLiteral
 	||| parseDecimalLiteral
 	||| parseStringLiteral
@@ -93,7 +97,7 @@ parseBang = fmap ExpressionBang $ expectSpecial "!" "bang"
 
 parseCall :: Parse Expression
 parseCall = do
-	fun <- parseDot ||| (parseBang >> reject "a `!` can be used only as a formal parameter")
+	fun <- parseDot
 	args <- parseMany (parseBang ||| parseDot)
 	return $ case args of
 		[] -> fun -- This cuts down on the number of non-calls everywhere
@@ -300,6 +304,7 @@ parseStatement = do
 			"return" -> parseReturn
 			"let" -> parseLet
 			"func" -> parseFuncDef
+			"struct" -> parseStruct
 			_ -> parseAssign ||| parseDo
 
 parseBlock :: Parse [Statement]

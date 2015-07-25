@@ -284,9 +284,11 @@ verifyStatementType scope (StatementLet _ body) = do
 	letBody <- mapM verifyLet body
 	-- TODO: prevent duplicate names, types
 	let newScope = addTypes (concat letBody) $ declareTypes declaredTypes scope
-	_ <- mapM (verifyStatementType newScope) body
+	_ <- mapM (verifyStatementType newScope) $ filter (not . isStruct) body
 	return newScope
 	where
+	isStruct StatementStruct{} = True
+	isStruct _ = False
 	declaredTypes = concat $ map go body where
 		go (StatementStruct _ structName structArgs) = [(token structName, map (\(f, t) -> (token f, t)) structArgs)]
 		go _ = []
