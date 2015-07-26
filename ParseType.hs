@@ -118,8 +118,52 @@ replaceType (name, with) (TypeName name')
 replaceType pair (TypeCall fun args) = TypeCall (replaceType pair fun) (map (replaceType pair) args)
 replaceType pair (TypeBangArrow bang right) = TypeBangArrow bang (replaceType pair right)
 replaceType pair (TypeArrow left right) = replaceType pair left `TypeArrow` replaceType pair right
+replaceType (name, with) (TypeGenerics generics body)
+	| name `elem` map token generics = TypeGenerics generics body
+	| otherwise = TypeGenerics generics $ replaceType (name, with) body
 
 replaceTypes :: [(String, Type)] -> Type -> Type
 replaceTypes [] t = t
 replaceTypes (p:ps) t = replaceTypes ps (replaceType p t)
 
+unifyWith :: [(String, Type)] -> [(String, Type)] -> Either String [(String, Type)]
+unifyWith x y = do
+	case [(nx, x', y') | (nx, x') <- x, (ny, y') <- y, nx == ny, not $ x' === y' ] of
+		[] -> return ()
+		fails -> Left $ intercalate ", " $ map (\(n, x', y') -> "type `" ++ n ++ "` cannot be unified with both `" ++ niceType x' ++ "` and `" ++ niceType y' ++ "`") fails
+	return $ filter (`absent` y) x ++ y
+	where
+	(n, _) `found` list = n `elem` map fst list
+	x' `absent` y' = not $ x' `found` y'
+
+unifyAll :: [[(String, Type)]] -> Either String [(String, Type)]
+unifyAll [] = Right []
+unifyAll [x] = Right x
+unifyAll (x:y:rest) = do
+	z <- x `unifyWith` y
+	unifyAll (z:rest)
+
+-- unifyTypes checks whether the right is a type that could be assigned to the left.
+-- for example, unifyTypes (Int) (<t> t) [] ==> Right[t = Int]
+-- but unifyTypes (<t> t) (Int) [] ==> Left[can't unify `<t> t` with `Int`]
+unifyTypes :: Type -> Type -> [String] -> Either String [(String, Type)]
+unifyTypes t (TypeName name) free
+	|token name `elem` free = Right [(token name, t)]
+unifyTypes (TypeName left) (TypeName right) _
+	|token left == token right = Right []
+unifyTypes left (TypeCall fun []) free = unifyTypes left fun free
+unifyTypes (TypeCall fun []) right free = unifyTypes fun right free
+unifyTypes (TypeCall funLeft argsLeft) (TypeCall funRight argsRight) free = do
+	final <- unifyTypes (last argsLeft) (last argsRight) free
+	rest <- unifyTypes (TypeCall funLeft (init argsLeft)) (TypeCall funRight (init argsRight)) free
+	final `unifyWith` rest
+unifyTypes (TypeArrow leftLeft leftRight) (TypeArrow rightLeft rightRight) free = do
+	bindLeft <- unifyTypes leftLeft rightLeft free
+	bindRight <- unifyTypes leftRight rightRight free
+	bindLeft `unifyWith` bindRight
+unifyTypes (TypeBangArrow _ left) (TypeBangArrow _ right) free = unifyTypes left right free
+unifyTypes left (TypeGenerics generics right) free = do
+	result <- unifyTypes left right (map token generics ++ free)
+	return $ filter (\(n, _) -> n `elem` free) result
+unifyTypes left@TypeGenerics{} right _ = Left $ "cannot convert specific type `" ++ niceType right ++ "` into generic type `" ++ niceType left ++ "`"
+unifyTypes left right _ = Left $ "cannot unify type `" ++ niceType left ++ "` with type `" ++ niceType right ++ "`"

@@ -118,24 +118,32 @@ getExpressionType _scope (ExpressionIntegerLiteral _) = Pass (makeType "Int")
 getExpressionType _scope (ExpressionDecimalLiteral _) = Pass (makeType "Float")
 getExpressionType _scope (ExpressionStringLiteral _) = Pass (makeType "String")
 getExpressionType _scope (ExpressionBoolLiteral _) = Pass (makeType "Bool")
-getExpressionType scope (ExpressionCall fun args) = do
-	funType <- getExpressionType scope fun
-	matchFuncType funType funType args
+getExpressionType scope (ExpressionCall funValue funArgs) = do
+	funType <- getExpressionType scope funValue
+	match funType funArgs
 	where
-	matchFuncType :: Type -> Type -> [Expression] -> Check Type
-	matchFuncType _ t [] = Pass t
-	matchFuncType wt (TypeBangArrow _ right) (ExpressionBang{} : rest) = matchFuncType wt right rest
-	matchFuncType _ (TypeBangArrow _ _) (arg : _) = do
-		flunk (expressionAt arg) $ "expected bang `!` but got expression " ++ show arg
-	matchFuncType _ (TypeArrow left _) (ExpressionBang bang : _) =
-		flunk bang $ "was expecting an argument of type `" ++ niceType left ++ "`, not a bang `!`"
-	matchFuncType wt (TypeArrow left right) (arg : rest) = do
+	match :: Type -> [Expression] -> Check Type
+	match (TypeGenerics generics fun) args = match' fun args (map token generics) []
+	match fun args = match' fun args [] []
+	match' fun [] _ sofar = return $ replaceTypes sofar fun
+	match' (TypeArrow left right) (arg : rest) free sofar = do
 		argType <- getExpressionType scope arg
-		assertTypeEqual argType left (expressionAt arg)
-		matchFuncType wt right rest
-	matchFuncType wt t (arg : _) = flunk (expressionAt arg) $ "got expression " ++ show arg ++ " applied as an argument to function " ++ show fun ++ " : `" ++ niceType wt ++ "` when none were expected `" ++ niceType t ++ "`"
+		sofar' <- case unifyTypes argType left free of
+			Left msg -> flunk (expressionAt arg) msg
+			Right sofar' -> return sofar'
+		sofar'' <- case unifyWith sofar sofar' of
+			Left msg -> flunk (expressionAt arg) msg
+			Right sofar'' -> return sofar''
+		match' right rest free sofar''
+	match' (TypeBangArrow _ right) (ExpressionBang _ : rest) free sofar = match' right rest free sofar
+	match' (TypeBangArrow _ _) (arg : _) _ _ = flunk (expressionAt arg) $ "expected a `!` instead of value applied to object of function type"
+	match' (TypeGenerics generics right) args@(arg:_) free sofar = case filter (`elem` free) (map token generics) of
+		[] -> match' right args (map token generics ++ free) sofar
+		shadowed -> flunk (expressionAt arg) $ "generics may not shadow each other (generic variable(s) " ++ intercalate ", " shadowed ++ ")"	
+	match' fun (arg : _) _ _ = flunk (expressionAt arg) $ "cannot apply argument to object with non-function type `" ++ niceType fun ++ "`"
+
 getExpressionType _scope (ExpressionBang bang) = flunk bang "a bang `!` outside of a matching function call is not allowed"
-getExpressionType scope (ExpressionFunc _funcToken args bang returns body) = do
+getExpressionType scope (ExpressionFunc _funcToken generics args bang returns body) = do
 	let scopeBody = setReturn returnType $ addTypes args scope
 	_ <- verifyStatementBlock scopeBody body
 	Pass funcType
@@ -146,9 +154,12 @@ getExpressionType scope (ExpressionFunc _funcToken args bang returns body) = do
 	returnType = case bang of
 		Nothing -> returnType'
 		Just _ -> TypeBangArrow (Token "!" (FileEnd "*") Special) returnType'
-	funcType = go (map snd args) where
+	funcType' = go (map snd args) where
 		go [] = returnType
 		go (t : ts) = t `TypeArrow` go ts
+	funcType = case generics of
+		[] -> funcType'
+		_ -> TypeGenerics generics funcType'
 getExpressionType scope (ExpressionOp left op right) = do
 	leftType <- getExpressionType scope left
 	rightType <- getExpressionType scope right
@@ -199,6 +210,7 @@ getExpressionType scope (ExpressionConstructor name fields) = case lookupTypeDec
 		Nothing -> flunk fieldName $ "type `" ++ niceType name ++ "` does not have a field called `" ++ token fieldName ++ "`"
 		Just expect -> do
 			actual <- getExpressionType scope fieldValue
+			-- TODO: replace with type unifier
 			assertTypeEqual actual expect (expressionAt fieldValue)
 			return ()
 	lookUp k m = case [v | (k', v) <- m, k == k'] of
@@ -224,6 +236,7 @@ verifyTypeScope scope (TypeCall fun args) = do
 	mapM_ (verifyTypeScope scope) args
 verifyTypeScope scope (TypeBangArrow _ right) = verifyTypeScope scope right
 verifyTypeScope scope (TypeArrow left right) = verifyTypeScope scope left >> verifyTypeScope scope right
+verifyTypeScope scope (TypeGenerics generics value) = verifyTypeScope (declareTypes (map (\t -> (token t, [], [])) generics) scope) value
 
 verifyStatementType :: Scope -> Statement -> Check Scope
 verifyStatementType scope (StatementVarVoid nameToken varType) = do
@@ -232,15 +245,17 @@ verifyStatementType scope (StatementVarVoid nameToken varType) = do
 verifyStatementType scope (StatementVarAssign nameToken varType value) = do
 	verifyTypeScope scope varType
 	valueType <- getExpressionType scope value
-	assertTypeEqual varType valueType (expressionAt value)
+	case unifyTypes varType valueType [] of
+		Left msg -> flunk (expressionAt value) $ "illegal assignment: " ++ msg
+		Right _ -> return ()
 	return $ addType nameToken varType scope
 verifyStatementType scope (StatementAssign nameToken value) = do
 	valueType <- getExpressionType scope value
 	case getType nameToken scope of
 		Nothing -> flunk nameToken $ "variable `" ++ token nameToken ++ "` is undeclared or out of scope"
-		Just expect -> do
-			assertTypeEqual valueType expect (expressionAt value)
-			return scope
+		Just expect -> case unifyTypes expect valueType [] of
+			Left msg -> flunk (expressionAt value) $ "illegal assignment: " ++ msg
+			Right _ -> return scope
 verifyStatementType scope (StatementDo value) = do
 	_ <- getExpressionType scope value
 	return scope
@@ -260,13 +275,14 @@ verifyStatementType scope (StatementWhile _ condition body) = do
 	assertTypeEqual (makeType "Bool") conditionType (expressionAt condition)
 	_ <- verifyStatementBlock scope body
 	return scope
-verifyStatementType scope (StatementReturn returnToken Nothing) = do
-	assertTypeEqual (mustReturn scope) (makeType "Void") returnToken
-	return scope
+verifyStatementType scope (StatementReturn returnToken Nothing) = case unifyTypes (mustReturn scope) (makeType "Void") [] of
+	Left msg -> flunk returnToken $ "illegal return; expected type `" ++ niceType (mustReturn scope) ++ "`; " ++ msg 
+	Right _ -> return scope
 verifyStatementType scope (StatementReturn _returnToken (Just value)) = do
 	valueType <- getExpressionType scope value
-	assertTypeEqual (mustReturn scope) valueType (expressionAt value)
-	return scope
+	case unifyTypes (mustReturn scope) valueType [] of
+		Left msg -> flunk (expressionAt value) $ "illegal return value: " ++ msg
+		Right _ -> return scope
 --declareTypes :: [(String, [String], [(String, Type)])] -> Scope -> Scope
 verifyStatementType scope (StatementFunc _funcToken funcName generics arguments bang returns body) = do
 	verifyTypeScope scope funcType
@@ -281,9 +297,12 @@ verifyStatementType scope (StatementFunc _funcToken funcName generics arguments 
 	returnType = case bang of
 		Nothing -> returnType'
 		Just _ -> TypeBangArrow (Token "!" (FileEnd "*") Special) returnType'
-	funcType = go (map snd arguments) where
+	funcType' = go (map snd arguments) where
 		go [] = returnType
 		go (t:ts) = t `TypeArrow` go ts
+	funcType = case generics of
+		[] -> funcType'
+		_ -> TypeGenerics generics funcType'
 verifyStatementType scope StatementBreak{} = return scope
 verifyStatementType scope (StatementLet _ body) = do
 	letBody <- mapM verifyLet body
@@ -298,10 +317,13 @@ verifyStatementType scope (StatementLet _ body) = do
 		go (StatementStruct _ structName structGenerics structArgs) = [(token structName, map token structGenerics, map (\(f, t) -> (token f, t)) structArgs)]
 		go _ = []
 	verifyLet (StatementVarAssign varName varType _) = Pass [(varName, varType)]
-	verifyLet (StatementFunc _funcToken funcName arguments bang returns _body) = Pass [(funcName, funcType)] where
-		funcType = go (map snd arguments) where
+	verifyLet (StatementFunc _funcToken funcName generics arguments bang returns _body) = Pass [(funcName, funcType)] where
+		funcType' = go (map snd arguments) where
 			go [] = returnType
 			go (t:ts) = t `TypeArrow` go ts
+		funcType = case generics of
+			[] -> funcType'
+			_ -> TypeGenerics generics funcType'
 		returnType' = case returns of
 			Nothing -> makeType "Void"
 			Just t -> t

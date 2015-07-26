@@ -1,18 +1,24 @@
-
 struct Pair t {
-	x : t;
-	y : t;
+	left : t;
+	right : t;
 }
 
-func add (a : Pair Int) (b : Pair Int) : Pair Int {
-	return {Pair Int | x = a.x + b.x, y = a.y + b.y};
+func add (p : Pair Int) : Int {
+	return p.left + p.right;
 }
 
-func printPair (p : Pair Int)! {
-	putStr ("(" ++ show p.x ++ ", " ++ show p.y ++ ")")!;
+func multiply (p : Pair Int) : Int {
+	return p.left * p.right;
+}
+
+func concat (p : Pair String) : String {
+	return p.left ++ ", " ++ p.right;
 }
 
 func main! {
-	printPair (add {Pair Int | x = 3, y = 7} {Pair Int | x = 2, y = 1})!;
+	var myPair : Pair Int = {Pair Int | left = 3, right = 4 };
+	var sum : Int = add myPair;
+	var product : Int = multiply myPair;
+	var both : Pair String = {Pair String | left = show sum, right = show product };
+	putStr (concat both)!;
 }
-

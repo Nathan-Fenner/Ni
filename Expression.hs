@@ -24,6 +24,7 @@ data Expression
 	| ExpressionDot Expression Token
 	| ExpressionFunc
 		{ anonFuncToken :: Token
+		, expressionGenerics :: [Token]
 		, arguments :: [(Token, Type)]
 		, funcBang :: Maybe Token
 		, returnType :: Maybe Type
@@ -120,11 +121,12 @@ parseFuncArg = do
 parseFunc :: Parse Expression
 parseFunc = do
 	funcWord <- soften $ expectSpecial "func" "func begins function declaration"
+	funcGenerics <- parseGenericVariables
 	funcArgs <- parseManyUntil (peekTokenName ":" ^|| peekTokenName "{" ^|| peekTokenName "!") parseFuncArg
 	bang <- maybeCheckTokenName "!"
 	returns <- parseMaybe (expectSpecial ":" "(optional) return type" >> parseType)
 	block <- parseBlock
-	return $ ExpressionFunc funcWord funcArgs bang returns block
+	return $ ExpressionFunc funcWord funcGenerics funcArgs bang returns block
 
 data Op a = OpLeaf a | OpBranch (Op a) Token (Op a) deriving Show
 

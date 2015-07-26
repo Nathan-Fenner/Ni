@@ -269,8 +269,8 @@ compileStatement gen (StatementLet _ block) = do
 		(mgen'', xs') <- valuesOf mgen' xs
 		return (mgen'', x':xs')
 	valueOf mgen (StatementVarAssign _ _ value) = compileExpression mgen value
-	valueOf mgen StatementFunc{funcToken, argumentsStatement, funcBangStatement, returnTypeStatement, bodyStatement} =
-		compileExpression mgen (ExpressionFunc funcToken argumentsStatement funcBangStatement returnTypeStatement bodyStatement)
+	valueOf mgen StatementFunc{funcToken, genericsStatement, argumentsStatement, funcBangStatement, returnTypeStatement, bodyStatement} =
+		compileExpression mgen (ExpressionFunc funcToken genericsStatement argumentsStatement funcBangStatement returnTypeStatement bodyStatement)
 	valueOf _ _ = error "illegal let-member"
 	makeContext :: IDGenerator -> I -> Compiled (IDGenerator, I)
 	makeContext mgen value = do
@@ -288,7 +288,7 @@ compileStatement gen (StatementLet _ block) = do
 		return (mgen'', i' : is')
 compileStatement gen StatementFunc{funcToken, funcName, argumentsStatement, funcBangStatement, returnTypeStatement, bodyStatement} =
 	compileStatement gen $ StatementLet (error "let token is useless")
-		[StatementVarAssign funcName (error "type is useless") $ ExpressionFunc funcToken argumentsStatement funcBangStatement returnTypeStatement bodyStatement]
+		[StatementVarAssign funcName (error "type is useless") $ ExpressionFunc funcToken (error "generics are useless") argumentsStatement funcBangStatement returnTypeStatement bodyStatement]
 compileStatement gen (StatementStruct _ name generics _) = return (gen, IComment $ "struct " ++ token name ++ concat (map ((" " ++) . token) generics) )
 	-- we will pass our implicits off as the shared "context" for evaluation.
 
