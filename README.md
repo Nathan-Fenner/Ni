@@ -15,13 +15,13 @@ In particular, Nickel eliminates references and uncontrolled side effects so tha
 ## Examples
 
 ### Hello, world!
-```
+```go
 func main! {
 	putStr "Hello, world"!;
 }
 ```
 ### Simple math
-```
+```go
 func main! { 
 	var x : Int = 5;
 	var y : Int = 7;
@@ -31,7 +31,7 @@ func main! {
 }
 ```
 ### Functions
-```
+```go
 func square (x : Int) : Int {
 	return x*x;
 }
@@ -40,7 +40,7 @@ func main! {
 }
 ```
 ### Partial Application with Currying
-```
+```go
 func multiplier (x : Int) (y : Int) : Int {
 	return x * y;
 }
@@ -52,7 +52,7 @@ func main! {
 }
 ```
 ### Recursive Functions
-```
+```go
 func factorial (n : Int) : Int {
 	if n == 0 {
 		return 1;
@@ -65,7 +65,7 @@ func main! {
 }
 ```
 ### Higher-Order Functions
-```
+```go
 func twice (f : ! -> Void)! {
 	f!;
 	f!;
@@ -75,7 +75,7 @@ func main! {
 }
 ```
 ### While-Loop
-```
+```go
 func main! {
 	var count : Int = 10;
 	var i : Int = 1;
@@ -86,7 +86,7 @@ func main! {
 }
 ```
 ### Implicit Parameters
-```
+```go
 func main! {
 	var count : Int = 5;
 	func many (f : ! -> Void) ! {
@@ -104,7 +104,7 @@ func main! {
 Although Nickel doesn't allow closures, when a function is defined, it may refer to any variable in scope as legal values. These are passed as implicit parameters to the function at its time of creation- if they change afterward, the function will not be affected.
 
 ### Compound Data Types
-```
+```go
 struct Point {
 	x : Int;
 	y : Int;
@@ -128,7 +128,7 @@ func main! {
 Struct literal fields are always keyed.
 
 ### Generic Data Types
-```
+```go
 struct Pair t {
 	left : t;
 	right : t;
