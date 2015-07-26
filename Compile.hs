@@ -8,6 +8,7 @@ import Data.List(intercalate, sort)
 import Control.Applicative
 import Expression
 import Lex(token)
+import ParseType(niceType)
 
 -- Don't inline it, so that we read the file at most once.
 {-# NOINLINE preludeSource #-}
@@ -210,7 +211,7 @@ compileExpression gen (ExpressionPrefix op arg) = do
 	return (gen', ICall (IName $ "$Prefix[" ++ show (token op) ++ "]") [arg'])
 compileExpression gen (ExpressionConstructor name fields) = do
 	(gen', fieldValues) <- mapGen gen (map snd fields)
-	return (gen', IConstructor (token name) $ zip (map (token . fst) fields) fieldValues)
+	return (gen', IConstructor (niceType name) $ zip (map (token . fst) fields) fieldValues)
 compileExpression gen (ExpressionDot left name) = do
 	(gen', left') <- compileExpression gen left
 	return (gen', IDot left' (token name))

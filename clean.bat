@@ -1,4 +1,5 @@
 @echo off
+cls
 rm *.hi
 rm *.o
 rm *.exe

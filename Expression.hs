@@ -23,7 +23,7 @@ data Expression
 		}
 	| ExpressionOp Expression Token Expression
 	| ExpressionPrefix Token Expression
-	| ExpressionConstructor Token [(Token, Expression)]
+	| ExpressionConstructor Type [(Token, Expression)]
 	deriving Show
 
 parseIdentifier :: Parse Expression
@@ -51,8 +51,8 @@ parseParens = do
 parseConstructor :: Parse Expression
 parseConstructor = do
 	_ <- soften $ expectSpecial "{" "expected `{` to open constructor"
-	name <- expectIdentifier "name"
-	_ <- expectSpecial "|" $ "expected `|` to follow constructor name `" ++ token name ++ "`" 
+	name <- parseType
+	_ <- expectSpecial "|" $ "expected `|` to follow constructor type `" ++ niceType name ++ "`" 
 	block <- interior
 	_ <- expectSpecial "}" "expected `}` to close constructor arguments"
 	return $ ExpressionConstructor name block

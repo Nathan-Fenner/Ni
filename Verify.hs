@@ -58,7 +58,7 @@ expressionAt (ExpressionDot atom _) = expressionAt atom
 expressionAt (ExpressionFunc { anonFuncToken = t }) = t
 expressionAt (ExpressionOp left _ _) = expressionAt left
 expressionAt (ExpressionPrefix op _) = op
-expressionAt (ExpressionConstructor t _) = t
+expressionAt (ExpressionConstructor t _) = typeAt t
 
 data Scope = Scope
 	{ scopeReturnType :: Type -- return type
@@ -88,10 +88,16 @@ declareTypes (p:ps) scope = declareTypes ps $ (\(x,y,z) -> declareType x y z) p 
 isTypeDeclared :: String -> Scope -> Bool
 isTypeDeclared n (Scope _ types _) = n `elem` map (\(n',_,_) -> n') types
 
-lookupTypeDeclaration :: String -> Scope -> Maybe ([String], [(String, Type)])
-lookupTypeDeclaration name (Scope _ types _) = case [ (generics, fields) | (name', generics, fields) <- types, name == name' ] of
-	[] -> Nothing
-	(body:_) -> Just body
+lookupTypeDeclaration :: Type -> Scope -> Either String [(String, Type)]
+lookupTypeDeclaration structType (Scope _ types _) = case canonical of
+	Left _ -> Left $ "The type `" ++ niceType structType ++ "` is not a struct-type"
+	Right (CanonicalType name generics) -> case [ (generics', fields') | (name', generics', fields') <- types, name == name' ] of
+		[] -> Left $ "There is no type with name `" ++ name ++ "`"
+		((generics', fields'):_) -> case length generics' == length generics of
+			False -> Left $ "struct type `" ++ name ++ "` expects " ++ show (length generics') ++ " type arguments, but it has been given " ++ show (length generics)
+			True -> Right $ map (\(f, t) -> (,) f $ replaceTypes (zip generics' generics) t) fields'
+	where
+	canonical = canonicalType structType
 
 mustReturn :: Scope -> Type
 mustReturn (Scope r _ _) = r
@@ -118,8 +124,8 @@ getExpressionType scope (ExpressionCall fun args) = do
 	where
 	matchFuncType :: Type -> Type -> [Expression] -> Check Type
 	matchFuncType _ t [] = Pass t
-	matchFuncType wt (TypeBangArrow right) (ExpressionBang{} : rest) = matchFuncType wt right rest
-	matchFuncType _ (TypeBangArrow _) (arg : _) = do
+	matchFuncType wt (TypeBangArrow _ right) (ExpressionBang{} : rest) = matchFuncType wt right rest
+	matchFuncType _ (TypeBangArrow _ _) (arg : _) = do
 		flunk (expressionAt arg) $ "expected bang `!` but got expression " ++ show arg
 	matchFuncType _ (TypeArrow left _) (ExpressionBang bang : _) =
 		flunk bang $ "was expecting an argument of type `" ++ niceType left ++ "`, not a bang `!`"
@@ -139,7 +145,7 @@ getExpressionType scope (ExpressionFunc _funcToken args bang returns body) = do
 		Just t -> t
 	returnType = case bang of
 		Nothing -> returnType'
-		Just _ -> TypeBangArrow returnType'
+		Just _ -> TypeBangArrow (Token "!" (FileEnd "*") Special) returnType'
 	funcType = go (map snd args) where
 		go [] = returnType
 		go (t : ts) = t `TypeArrow` go ts
@@ -178,19 +184,19 @@ getExpressionType scope (ExpressionPrefix op arg) = do
 	(expect, returns) = case token op of
 		"-" -> (makeType "Int", makeType "Int")
 		_ -> error $ "compiler error: undefined prefix operator `" ++ token op ++ "` (please contact the repository owner at github.com/Nathan-Fenner/Ni)"
-getExpressionType scope (ExpressionConstructor name fields) = case lookupTypeDeclaration (token name) scope of
-	Nothing -> flunk name $ "type `" ++ token name ++ "` is not declared"
-	Just (generics, fieldTypes) -> do
+getExpressionType scope (ExpressionConstructor name fields) = case lookupTypeDeclaration name scope of
+	Left msg -> flunk (typeAt name) $ msg
+	Right fieldTypes -> do
 		case filter (\(f,_) -> not $ f `elem` map (token . fst) fields) fieldTypes of
 			[] -> return ()
-			[one] -> flunk name $ "field `" ++ fst one ++ "` of type `" ++ token name ++ "` is never assigned"
-			several -> flunk name $ "fields " ++ intercalate ", " (map (\n -> "`" ++ fst n ++ "`") several) ++ " of type `" ++ token name ++ "` are never assigned"
-		if length fields == length fieldTypes then return () else flunk name $ "some fields for constructor of type `" ++ token name ++ "` are assigned twice"
+			[one] -> flunk (typeAt name) $ "field `" ++ fst one ++ "` of type `" ++ niceType name ++ "` is never assigned"
+			several -> flunk (typeAt name) $ "fields " ++ intercalate ", " (map (\n -> "`" ++ fst n ++ "`") several) ++ " of type `" ++ niceType name ++ "` are never assigned"
+		if length fields == length fieldTypes then return () else flunk (typeAt name) $ "some fields for constructor of type `" ++ niceType name ++ "` are assigned twice"
 		mapM_ (uncurry $ checkField fieldTypes) fields
-		return (makeType $ token name)
+		return name
 	where
 	checkField fieldTypes fieldName fieldValue = case lookUp (token fieldName) fieldTypes of
-		Nothing -> flunk fieldName $ "type `" ++ token name ++ "` does not have a field called `" ++ token fieldName ++ "`"
+		Nothing -> flunk fieldName $ "type `" ++ niceType name ++ "` does not have a field called `" ++ token fieldName ++ "`"
 		Just expect -> do
 			actual <- getExpressionType scope fieldValue
 			assertTypeEqual actual expect (expressionAt fieldValue)
@@ -200,13 +206,11 @@ getExpressionType scope (ExpressionConstructor name fields) = case lookupTypeDec
 		(v : _) -> Just v
 getExpressionType scope (ExpressionDot left field) = do
 	leftType <- getExpressionType scope left
-	case leftType of
-		TypeName name -> case lookupTypeDeclaration (token name) scope of
-			Nothing -> flunk field $ "compiler error - can't index unknown type `" ++ token name ++ "`"
-			Just (generics, fields) -> case lookUp (token field) fields of
-				Nothing -> flunk field $ "type `" ++ token name ++ "` has no field called `" ++ show field ++ "`"
-				Just t -> return t
-		_ -> flunk field $ "cannot access field (`" ++ token field ++ "`) on non-struct type `" ++ niceType leftType ++ "`"
+	case lookupTypeDeclaration leftType scope of
+		Left msg -> flunk field $ "can't index non-struct type `" ++ niceType leftType ++ "`: " ++ msg
+		Right fields -> case lookUp (token field) fields of
+			Nothing -> flunk field $ "type `" ++ niceType leftType ++ "` has no field called `" ++ show field ++ "`"
+			Just t -> return t
 	where
 	lookUp k m = case [v | (k', v) <- m, k == k'] of
 		[] -> Nothing
@@ -218,7 +222,7 @@ verifyTypeScope scope (TypeName t) = if token t `isTypeDeclared` scope then retu
 verifyTypeScope scope (TypeCall fun args) = do
 	verifyTypeScope scope fun
 	mapM_ (verifyTypeScope scope) args
-verifyTypeScope scope (TypeBangArrow right) = verifyTypeScope scope right
+verifyTypeScope scope (TypeBangArrow _ right) = verifyTypeScope scope right
 verifyTypeScope scope (TypeArrow left right) = verifyTypeScope scope left >> verifyTypeScope scope right
 
 verifyStatementType :: Scope -> Statement -> Check Scope
@@ -275,7 +279,7 @@ verifyStatementType scope (StatementFunc _funcToken funcName arguments bang retu
 		Just t -> t
 	returnType = case bang of
 		Nothing -> returnType'
-		Just _ -> TypeBangArrow returnType'
+		Just _ -> TypeBangArrow (Token "!" (FileEnd "*") Special) returnType'
 	funcType = go (map snd arguments) where
 		go [] = returnType
 		go (t:ts) = t `TypeArrow` go ts
@@ -302,7 +306,7 @@ verifyStatementType scope (StatementLet _ body) = do
 			Just t -> t
 		returnType = case bang of
 			Nothing -> returnType'
-			Just _ -> TypeBangArrow returnType'
+			Just _ -> TypeBangArrow (Token "!" (FileEnd "*") Special) returnType'
 	verifyLet StatementStruct{} = Pass []
 	verifyLet s = flunk (statementAt s) $ "only variable definitions, function declarations, and type definitions are allowed in let blocks"
 verifyStatementType scope (StatementStruct _ structName generics fields)
@@ -319,8 +323,8 @@ topScope :: Scope
 topScope =
 	Scope (makeType "Void")
 		[ ("Void", [], []), ("Int", [], []), ("String", [], []), ("Bool", [], []) ]
-		[ (Token "print" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` TypeBangArrow (makeType "Void"))
-		, (Token "putStr" (FileEnd "^") Identifier, makeType "String" `TypeArrow` TypeBangArrow (makeType "Void"))
+		[ (Token "print" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` TypeBangArrow (Token "!" (FileEnd "*") Special) (makeType "Void"))
+		, (Token "putStr" (FileEnd "^") Identifier, makeType "String" `TypeArrow` TypeBangArrow (Token "!" (FileEnd "*") Special) (makeType "Void"))
 		, (Token "show" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` makeType "String")
 		]
 
