@@ -78,15 +78,29 @@ parseTypeParens = do
 	return t
 
 parseTypeAtom :: Parse Type
-parseTypeAtom = parseTypeName ||| parseTypeParens
+parseTypeAtom = parseTypeName ||| parseTypeParens ||| reject "expected a type atom to appear here"
 
 parseTypeCall :: Parse Type
 parseTypeCall = do
 	fun <- parseTypeAtom
-	args <- parseMany parseTypeAtom
+	args <- parseMany (soften parseTypeAtom)
 	return $ case args of
 		[] -> fun
 		_ -> TypeCall fun args
+
+parseTypeGeneric :: Parse Type
+parseTypeGeneric = do
+	generics <- parseGenericVariables
+	right <- parseType
+	return $ TypeGenerics generics right
+	where
+	parseGenericVariables :: Parse [Token]
+	parseGenericVariables = do
+		_ <- soften $ expectOperator "<" "compiler error - accidental unconditional `<` expected"
+		genericFirst <- expectIdentifier "expected a generic variable following `<`"
+		genericRest <- parseManyUntil (peekTokenName ">") (expectSpecial "," "comma expected following generic variable" >> expectIdentifier "expected a generic variable following `,`")
+		_ <- expectOperator ">" "(compiler error) expected `>` to end generics"
+		return $ genericFirst:genericRest
 
 parseTypeArrowBang :: Parse Type
 parseTypeArrowBang = do
@@ -106,7 +120,7 @@ parseTypeArrowOrdinary = do
 		return left
 	
 parseTypeArrow :: Parse Type
-parseTypeArrow = peekToken (\t -> token t == "!") ??? (parseTypeArrowBang, parseTypeArrowOrdinary)
+parseTypeArrow = parseTypeGeneric ||| (peekToken (\t -> token t == "!") ??? (parseTypeArrowBang, parseTypeArrowOrdinary))
 
 parseType :: Parse Type
 parseType = parseTypeArrow
@@ -165,5 +179,5 @@ unifyTypes (TypeBangArrow _ left) (TypeBangArrow _ right) free = unifyTypes left
 unifyTypes left (TypeGenerics generics right) free = do
 	result <- unifyTypes left right (map token generics ++ free)
 	return $ filter (\(n, _) -> n `elem` free) result
-unifyTypes left@TypeGenerics{} right _ = Left $ "cannot convert specific type `" ++ niceType right ++ "` into generic type `" ++ niceType left ++ "`"
+unifyTypes (TypeGenerics _ left) right free = unifyTypes left right free -- EVALUATE THIS
 unifyTypes left right _ = Left $ "cannot unify type `" ++ niceType left ++ "` with type `" ++ niceType right ++ "`"
