@@ -1,11 +1,16 @@
 # *Ni*ckel
-The *Ni*ckel programming language.
+The Nickel programming language.
 
 Nickel is a strongly-typed, semifunctional imperative language with (sometimes!) non-strict semantics.
 
 It's currently transpiled to JavaScript, with plans for a similar transpilation to C.
 
 The compiler is written in Haskell, with no other external dependencies. I plan on bootstrapping it, eventually.
+
+## Design Goals
+Nickel is intended to be extremely easy to read, reason about, and refactor.
+
+In particular, Nickel eliminates references and uncontrolled side effects so that code can be reasoned about in an entirely local manner. Programs in Nickel should be designed to transform data, rather than mutate it.
 
 ## Examples
 
@@ -96,33 +101,60 @@ func main! {
 	many (print 3)!;
 }
 ```
-When a function is defined in a function or any other lower scope,
-it implicitly accepts any variable in scope as an implicit parameter.
-In contrast to closures, changing any of these variables after the function's
-definition will have no effect on the function's behavior.
-The above will print 35 and then 15 (not 35 and then 6).
+Although Nickel doesn't allow closures, when a function is defined, it may refer to any variable in scope as legal values. These are passed as implicit parameters to the function at its time of creation- if they change afterward, the function will not be affected.
 
-Eliminating uncontrolled effects by preventing unintentional references is a major design goal of Nickel.
-### Structs (a WIP)
+### Compound Data Types
 ```
-struct Pair {
+struct Point {
 	x : Int;
 	y : Int;
 }
 
-func add (a : Pair) (b : Pair) : Pair {
-	return {Pair | x = a.x + b.x, y = a.y + b.y};
+func add (a : Point) (b : Point) : Point {
+	return {Point | x = a.x + b.x, y = a.y + b.y};
 }
 
-func printPair (p : Pair)! {
+func printPoint (p : Point)! {
 	var str : String = "(" ++ show p.x ++ ", " ++ show p.y ++ ")";
 	putStr str!;
 }
 
 func main! {
-	printPair (add {Pair | x = 3, y = 7} {Pair | x = 2, y = 1})!;
+	printPoint (add {Point | x = 3, y = 7} {Point | x = 2, y = 1})!;
 }
 ```
+"Structs" are the basic way to store compound data. The struct instantiation syntax is a little unusual, but works well with the rest of the language's syntax features.
+
+Struct literal fields are always keyed.
+
+### Generic Data Types
+```
+struct Pair t {
+	left : t;
+	right : t;
+}
+
+func add (p : Pair Int) : Int {
+	return p.left + p.right;
+}
+
+func multiply (p : Pair Int) : Int {
+	return p.left * p.right;
+}
+
+func concat (p : Pair String) : String {
+	return p.left ++ ", " ++ p.right;
+}
+
+func main! {
+	var myPair : Pair Int = {Pair Int | left = 3, right = 4 };
+	var sum : Int = add myPair;
+	var product : Int = multiply myPair;
+	var both : Pair String = {Pair String | left = show sum, right = show product };
+	putStr (concat both)!;
+}
+```
+Structs in Nickel can be made generic. They allow any number of generic parameters.
 
 ## Planned Features
 
