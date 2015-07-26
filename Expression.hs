@@ -5,6 +5,14 @@ import Lex
 import Parse
 import ParseType
 
+parseGenericVariables :: Parse [Token]
+parseGenericVariables = (do
+	_ <- soften $ expectOperator "<" "(TODO) generics are required on all function definitions"
+	genericFirst <- expectIdentifier "expected a generic variable following `<`"
+	genericRest <- parseManyUntil (peekTokenName ">") (expectSpecial "," "comma expected following generic variable" >> expectIdentifier "expected a generic variable following `,`")
+	_ <- expectOperator ">" "(compiler error) expected `>` to end generics"
+	return $ genericFirst:genericRest) ||| return []
+
 data Expression
 	= ExpressionIdentifier Token
 	| ExpressionIntegerLiteral Token
@@ -189,7 +197,15 @@ data Statement
 	| StatementReturn Token (Maybe Expression)
 	| StatementBreak Token
 	| StatementLet Token [Statement]
-	| StatementFunc { funcToken :: Token, funcName :: Token, argumentsStatement :: [(Token, Type)], funcBangStatement :: Maybe Token, returnTypeStatement :: Maybe Type , bodyStatement :: [Statement] }
+	| StatementFunc
+		{ funcToken :: Token
+		, funcName :: Token
+		, genericsStatement :: [Token]
+		, argumentsStatement :: [(Token, Type)]
+		, funcBangStatement :: Maybe Token
+		, returnTypeStatement :: Maybe Type
+		, bodyStatement :: [Statement]
+		}
 	| StatementStruct Token Token [Token] [(Token, Type)]
 	deriving Show
 
@@ -284,11 +300,12 @@ parseFuncDef :: Parse Statement
 parseFuncDef = do
 	funcWord <- expectSpecial "func" "expected `func` to begin function declaration"
 	name <- expectIdentifier "expected function name to follow `func` keyword"
+	generics <- parseGenericVariables
 	funcArgs <- parseManyUntil (peekTokenName ":" ^|| peekTokenName "{" ^|| peekTokenName "!") parseFuncArg
 	bang <- maybeCheckTokenName "!"
 	returns <- parseMaybe (expectSpecial ":" "(optional) return type" >> parseType)
 	block <- parseBlock
-	return $ StatementFunc funcWord name funcArgs bang returns block
+	return $ StatementFunc funcWord name generics funcArgs bang returns block
 
 parseStatement :: Parse Statement
 parseStatement = do

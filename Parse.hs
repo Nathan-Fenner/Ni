@@ -91,6 +91,9 @@ expectIdentifier msg = expectToken (\t -> kind t == Identifier) ("expected ident
 expectSpecial :: String -> String -> Parse Token
 expectSpecial name msg = expectToken (\t -> kind t == Special && token t == name) msg
 
+expectOperator :: String -> String -> Parse Token
+expectOperator name msg = expectToken (\t -> kind t == Operator && token t == name) msg
+
 peekToken :: (Token -> Bool) -> Parse Bool
 peekToken f = Parse $ \(_, ts) -> case ts of
 	[] -> Success False ts

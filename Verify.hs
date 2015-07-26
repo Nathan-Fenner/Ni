@@ -267,10 +267,11 @@ verifyStatementType scope (StatementReturn _returnToken (Just value)) = do
 	valueType <- getExpressionType scope value
 	assertTypeEqual (mustReturn scope) valueType (expressionAt value)
 	return scope
-verifyStatementType scope (StatementFunc _funcToken funcName arguments bang returns body) = do
+--declareTypes :: [(String, [String], [(String, Type)])] -> Scope -> Scope
+verifyStatementType scope (StatementFunc _funcToken funcName generics arguments bang returns body) = do
 	verifyTypeScope scope funcType
 	let scopeNew = addType funcName funcType scope
-	let scopeBody = setReturn returnType $ addTypes arguments scopeNew
+	let scopeBody = setReturn returnType $ addTypes arguments $ declareTypes (map (\g -> (token g, [], [])) generics) $ scopeNew
 	_ <- verifyStatementBlock scopeBody body
 	return scopeNew
 	where
