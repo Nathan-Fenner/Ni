@@ -154,6 +154,31 @@ func main! {
 	putStr (concat both)!;
 }
 ```
+### Polymorphism
+```go
+func id <a> (x : a) : a {
+	return x;
+}
+func first <a, b> (x : a) (y : b) : a {
+	return x;
+}
+func second <a, b> (x : a) (y : b) : b {
+	return y;
+}
+func succ (n : Int) : Int {
+	return n + 1;
+}
+
+func main! {
+	print (id 5)!;
+	print (succ 5)!;
+	print (first 2 5)!;
+	var myID : <t> t -> t = id;
+	var myFun : Int -> Int = id;
+	print (myID 3)!;
+	print (myFun 3)!;
+}
+```
 Structs in Nickel can be made generic. They allow any number of generic parameters.
 
 ## Planned Features
