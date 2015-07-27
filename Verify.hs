@@ -345,10 +345,21 @@ verifyStatementBlock scope (s : ss) = do
 topScope :: Scope
 topScope =
 	Scope (makeType "Void")
-		[ ("Void", [], []), ("Int", [], []), ("String", [], []), ("Bool", [], []) ]
+		[ ("Void", [], []), ("Int", [], []), ("String", [], []), ("Bool", [], []), ("Integer", [], []) ]
 		[ (Token "print" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` TypeBangArrow (Token "!" (FileEnd "*") Special) (makeType "Void"))
 		, (Token "putStr" (FileEnd "^") Identifier, makeType "String" `TypeArrow` TypeBangArrow (Token "!" (FileEnd "*") Special) (makeType "Void"))
+		, (Token "not" (FileEnd "^") Identifier, makeType "Bool" `TypeArrow` makeType "Bool")
 		, (Token "show" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` makeType "String")
+		, (Token "iAdd" (FileEnd "^") Identifier, makeType "Integer" `TypeArrow` (makeType "Integer" `TypeArrow` makeType "Integer") )
+		, (Token "iSubtract" (FileEnd "^") Identifier, makeType "Integer" `TypeArrow` (makeType "Integer" `TypeArrow` makeType "Integer") )
+		, (Token "iMultiply" (FileEnd "^") Identifier, makeType "Integer" `TypeArrow` (makeType "Integer" `TypeArrow` makeType "Integer") )
+		, (Token "iDivide" (FileEnd "^") Identifier, makeType "Integer" `TypeArrow` (makeType "Integer" `TypeArrow` makeType "Integer") )
+		, (Token "iMod" (FileEnd "^") Identifier, makeType "Integer" `TypeArrow` (makeType "Integer" `TypeArrow` makeType "Integer") )
+		, (Token "iNegate" (FileEnd "^") Identifier, makeType "Integer" `TypeArrow` makeType "Integer" )
+		, (Token "iPrint" (FileEnd "^") Identifier, makeType "Integer" `TypeArrow` TypeBangArrow (Token "!" (FileEnd "*") Special) (makeType "Void"))
+		, (Token "iLess" (FileEnd "^") Identifier, makeType "Integer" `TypeArrow` (makeType "Integer" `TypeArrow` makeType "Bool") )
+		, (Token "iEquals" (FileEnd "^") Identifier, makeType "Integer" `TypeArrow` (makeType "Integer" `TypeArrow` makeType "Bool") )
+		, (Token "big" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` makeType "Integer")
 		]
 
 verifyProgram :: Statement -> Check ()

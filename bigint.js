@@ -51,7 +51,6 @@ BigInt.prototype.negate = function() {
 	return b
 }
 
-
 BigInt.prototype.add = function(that) {
 	this.pad(that)
 	that.pad(this)
@@ -82,8 +81,7 @@ BigInt.prototype.add = function(that) {
 		}
 		b.sign = -1
 	}
-	b.clean()
-	return b
+	return b.clean()
 }
 
 BigInt.prototype.multiply = function(that) {
@@ -104,8 +102,7 @@ BigInt.prototype.multiply = function(that) {
 			}
 		}
 	}
-	b.clean()
-	return b
+	return b.clean()
 }
 
 BigInt.prototype.equalTo = function(that) {
@@ -196,14 +193,14 @@ BigInt.prototype.divide = function(that) {
 	var b = new BigInt(0)
 	b.data = d
 	b.sign = this.sign * that.sign
-	return b
+	return b.clean()
 }
 
 BigInt.prototype.mod = function(that) {
 	var about = this.divide(that).multiply(that)
 	var k = this.subtract(about);
 	// Sign of... left?
-	return k
+	return k.clean()
 	// Always positive answer:
 	/*if (k.lessThan(new BigInt(0))) {
 		return k.add(that)
