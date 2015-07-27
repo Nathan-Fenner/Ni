@@ -1,0 +1,113 @@
+<!doctype html>
+<html>
+<head>
+	<title>BigInt test</title>
+	<style>
+	* {
+		text-align: justify;
+	}
+	.fail {
+		background: #FAA;
+		font-weight: bold;
+		display: block;
+	}
+	li {
+		padding: 0.5em;
+	}
+	.pass {
+		padding-top: 0;
+		padding-bottom: 0;
+		display: inline-block;
+		margin-right: 0.5em;
+		margin-bottom: 0.5em;
+		background: #AFA;
+	}
+	</style>
+</head>
+<body>
+	<script src="bigint.js"></script>
+	<ul id="tests">
+	</ul>
+<script>
+var passes = 0;
+
+function test(message, correct, answer) {
+	if (correct == answer) {
+		passes++
+	} else {
+		var li = document.createElement("li")
+		li.textContent = message
+		li.className = "fail"
+		var span = document.createElement("span")
+		span.innerHTML = " Expected <code>" + correct + "</code>, got <code>" + answer + "</code>"
+		span.style.fontWeight = "normal"
+		li.appendChild(span)
+		tests.appendChild(li)
+	}
+}
+
+function testOperator(op, f, p) {
+	for (var u = -1000; u < 1000; u += 57) {
+		for (var v = -1000; v < 1000; v += 57) {
+			var ans = new BigInt(u)[p](new BigInt(v))
+			if (ans instanceof BigInt) {
+				ans = ans.toFloat()
+			}
+			test(u + " " + op + " " + v, f(u, v), ans)
+		}
+	}
+}
+
+
+test("toFloat 17", 17, new BigInt(17).toFloat())
+test("toFloat -1", -1, new BigInt(-1).toFloat())
+test("toFloat 0", 0, new BigInt(0).toFloat())
+test("negate 0", 0, new BigInt(0).negate().toFloat())
+test("negate 1", -1, new BigInt(1).negate().toFloat())
+test("negate 10", -10, new BigInt(10).negate().toFloat())
+test("negate 100", -100, new BigInt(100).negate().toFloat())
+test("negate -1", 1, new BigInt(-1).negate().toFloat())
+test("negate -10", 10, new BigInt(-10).negate().toFloat())
+test("negate -100", 100, new BigInt(-100).negate().toFloat())
+
+function toZero(n) {
+	if (n < 0) {
+		return Math.ceil(n)
+	} else {
+		return Math.floor(n)
+	}
+}
+
+testOperator("+", function(x,y){return x+y}, "add")
+testOperator("*", function(x,y){return x*y}, "multiply")
+testOperator("-", function(x,y){return x-y}, "subtract")
+testOperator("<", function(x,y){return x<y}, "lessThan")
+testOperator("==", function(x,y){return x==y}, "equalTo")
+testOperator("/", function(x,y){return toZero(x/y)}, "divide")
+testOperator("%", function(x,y){return x%y}, "mod")
+
+
+function bigFac(n) {
+	var k = new BigInt(1);
+	for (var i = 2; i <= n; i++) {
+		k = k.multiply(new BigInt(i))
+	}
+	return k
+}
+
+test("5!", 120, bigFac(5).toFloat())
+
+var f100 = bigFac(100)
+var s = f100.toString()
+var n = 0
+for (var i = 0; i < s.length; i++) {
+	n += 1 * s.charAt(i)
+}
+test("sum of 100!'s digits", 648, n)
+
+var passed = document.createElement("div")
+passed.textContent = "Passed: " + passes + " tests"
+document.getElementById("tests").appendChild(passed)
+
+</script>
+</body>
