@@ -299,11 +299,11 @@ compileProgram statement = case compileStatement newGenerator statement of
 		concat (map (\(CompiledFunction _ v) -> serialize v) headers) ++
 		"\n\n// Program\n" ++
 		"try {\n" ++
-		tab (serialize value) ++
+		tab (serialize value) ++ "\n// Call main\n" ++
+		"$Force($Call(main, [$Bang]));\n" ++
 		"} catch (m) {\n" ++
 		"\tconsole.log('An unexpected error occurred', m);\n" ++
-		"}\n" ++ 
-		"$Force($Call(main, [$Bang]));\n"
+		"}\n"
 
 
 
