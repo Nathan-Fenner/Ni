@@ -1,8 +1,11 @@
 
+{-# LANGUAGE NamedFieldPuns #-}
+
 module Verify where
 
 import Control.Applicative
 import Expression hiding(returnType, arguments, funcName, body)
+import qualified Expression
 import Data.List(intercalate)
 import ParseType
 import Lex
@@ -322,6 +325,8 @@ verifyStatementType scope (StatementLet letToken body) = do
 	-- TODO: prevent duplicate names, types
 	mapM_ notShadowed declaredTypes
 	allUnique $ map (\(name, _, _) -> name) declaredTypes
+	allUniqueVariable newNames
+	allNewVariable newNames
 	let newScope = addTypes (concat letBody) $ declareTypes declaredTypes scope
 	_ <- mapM (verifyStatementType newScope) $ filter (not . isStruct) body
 	return newScope
@@ -334,12 +339,29 @@ verifyStatementType scope (StatementLet letToken body) = do
 	allUnique (first:rest)
 		|first `elem` rest = flunk letToken $ "let block defines type `" ++ first ++ "` multiple times"
 		|otherwise = allUnique rest
+	allNewVariable :: [Token] -> Check ()
+	allNewVariable [] = return ()
+	allNewVariable (name:rest)
+		|token name `elem` map (\(name', _, _) -> name') (scopeTypes scope) = flunk name $ "variable `" ++ token name ++ "` has already been declared"
+		|otherwise = allNewVariable rest
+	allUniqueVariable :: [Token] -> Check ()
+	allUniqueVariable [] = return ()
+	allUniqueVariable (first:rest)
+		|token first `elem` map token rest = flunk first $ "let block defines variable `" ++ token first ++ "` multiple times"
+		|otherwise = allUniqueVariable rest
 	isStruct StatementStruct{} = True
 	isStruct _ = False
 	declaredTypes :: [(String, [String], [(String, Type)])]
 	declaredTypes = concat $ map go body where
 		go (StatementStruct _ structName structGenerics structArgs) = [(token structName, map token structGenerics, map (\(f, t) -> (token f, t)) structArgs)]
 		go _ = []
+	newNames :: [Token]
+	newNames = concat $ map nameOf body where
+		nameOf StatementFunc{Expression.funcName} = [funcName]
+		nameOf (StatementVarAssign varName _ _) = [varName]
+		nameOf (StatementVarVoid varName _) = [varName]
+		nameOf StatementStruct{} = []
+		nameOf _ = error "invalid statement type in let-body"
 	verifyLet (StatementVarAssign varName varType _) = Pass [(varName, varType)]
 	verifyLet (StatementFunc _funcToken funcName generics arguments bang returns _body) = Pass [(funcName, funcType)] where
 		funcType' = go (map snd arguments) where
