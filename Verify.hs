@@ -240,15 +240,29 @@ verifyTypeScope scope (TypeGenerics generics value) = verifyTypeScope (declareTy
 
 verifyStatementType :: Scope -> Statement -> Check Scope
 verifyStatementType scope (StatementVarVoid nameToken varType) = do
+	case lookUp nameToken (scopeStack scope) of
+		Nothing -> return ()
+		Just other -> flunk nameToken $ "variable `" ++ token nameToken ++ "` has already been declared at " ++ show other
 	verifyTypeScope scope varType
 	return $ addType nameToken varType scope
+	where
+	lookUp k m = case [k' | (k', _) <- m, token k == token k'] of
+		[] -> Nothing
+		(v : _) -> Just v
 verifyStatementType scope (StatementVarAssign nameToken varType value) = do
+	case lookUp nameToken (scopeStack scope) of
+		Nothing -> return ()
+		Just other -> flunk nameToken $ "variable `" ++ token nameToken ++ "` has already been declared at " ++ show other
 	verifyTypeScope scope varType
 	valueType <- getExpressionType scope value
 	case unifyTypes varType valueType [] of
 		Left msg -> flunk (expressionAt value) $ "illegal assignment: " ++ msg
 		Right _ -> return ()
 	return $ addType nameToken varType scope
+	where
+	lookUp k m = case [k' | (k', _) <- m, token k == token k'] of
+		[] -> Nothing
+		(v : _) -> Just v
 verifyStatementType scope (StatementAssign nameToken value) = do
 	valueType <- getExpressionType scope value
 	case getType nameToken scope of
