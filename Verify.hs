@@ -297,7 +297,6 @@ verifyStatementType scope (StatementReturn _returnToken (Just value)) = do
 	case unifyTypes (mustReturn scope) valueType [] of
 		Left msg -> flunk (expressionAt value) $ "illegal return value: " ++ msg
 		Right _ -> return scope
---declareTypes :: [(String, [String], [(String, Type)])] -> Scope -> Scope
 verifyStatementType scope (StatementFunc _funcToken funcName generics arguments bang returns body) = do
 	verifyTypeScope scope funcType
 	let scopeNew = addType funcName funcType scope
@@ -318,15 +317,20 @@ verifyStatementType scope (StatementFunc _funcToken funcName generics arguments 
 		[] -> funcType'
 		_ -> TypeGenerics generics funcType'
 verifyStatementType scope StatementBreak{} = return scope
-verifyStatementType scope (StatementLet _ body) = do
+verifyStatementType scope (StatementLet letToken body) = do
 	letBody <- mapM verifyLet body
 	-- TODO: prevent duplicate names, types
+	mapM_ notShadowed declaredTypes
 	let newScope = addTypes (concat letBody) $ declareTypes declaredTypes scope
 	_ <- mapM (verifyStatementType newScope) $ filter (not . isStruct) body
 	return newScope
 	where
+	notShadowed (name, _, _) = case name `elem` map (\(x,_,_) -> x) (scopeTypes scope) of
+		False -> return ()
+		True -> flunk letToken $ "let block re-declares type `" ++ name ++ "`"
 	isStruct StatementStruct{} = True
 	isStruct _ = False
+	declaredTypes :: [(String, [String], [(String, Type)])]
 	declaredTypes = concat $ map go body where
 		go (StatementStruct _ structName structGenerics structArgs) = [(token structName, map token structGenerics, map (\(f, t) -> (token f, t)) structArgs)]
 		go _ = []
