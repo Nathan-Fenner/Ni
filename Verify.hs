@@ -321,6 +321,7 @@ verifyStatementType scope (StatementLet letToken body) = do
 	letBody <- mapM verifyLet body
 	-- TODO: prevent duplicate names, types
 	mapM_ notShadowed declaredTypes
+	allUnique $ map (\(name, _, _) -> name) declaredTypes
 	let newScope = addTypes (concat letBody) $ declareTypes declaredTypes scope
 	_ <- mapM (verifyStatementType newScope) $ filter (not . isStruct) body
 	return newScope
@@ -328,6 +329,11 @@ verifyStatementType scope (StatementLet letToken body) = do
 	notShadowed (name, _, _) = case name `elem` map (\(x,_,_) -> x) (scopeTypes scope) of
 		False -> return ()
 		True -> flunk letToken $ "let block re-declares type `" ++ name ++ "`"
+	allUnique :: [String] -> Check ()
+	allUnique [] = return ()
+	allUnique (first:rest)
+		|first `elem` rest = flunk letToken $ "let block defines type `" ++ first ++ "` multiple times"
+		|otherwise = allUnique rest
 	isStruct StatementStruct{} = True
 	isStruct _ = False
 	declaredTypes :: [(String, [String], [(String, Type)])]
