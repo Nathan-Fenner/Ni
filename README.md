@@ -129,7 +129,7 @@ Struct literal fields are always keyed.
 
 ### Generic Data Types
 ```go
-struct Pair t {
+struct Pair <t> {
 	left : t;
 	right : t;
 }

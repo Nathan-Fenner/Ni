@@ -276,7 +276,7 @@ parseStruct :: Parse Statement
 parseStruct = do
 	structToken <- expectSpecial "struct" "expected `struct` to begin struct definition"
 	name <- expectIdentifier "expected struct name to follow `struct` token"
-	generics <- parseManyUntil (peekTokenName "{") (expectIdentifier $ "expected only type parameters after struct name `" ++ token name ++ "` and before body")
+	generics <- parseGenericVariables
 	block <- structBody
 	return $ StatementStruct structToken name generics block
 	where
