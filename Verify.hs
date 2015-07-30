@@ -372,7 +372,15 @@ verifyStatementTypeDeclare scope statement@(StatementStruct _ structName generic
 		let newScope = declareType (token structName) (map token generics) (map (\(f,t) -> (token f, t)) fields) scope
 		verifyStatementType newScope statement
 		return newScope
-
+verifyStatementTypeDeclare scope statement@StatementReturn{} = do
+	verifyStatementType scope statement
+	return scope{hasReturned = True}
+verifyStatementTypeDeclare scope (StatementIfElse _ condition bodyThen bodyElse) = do
+	conditionType <- getExpressionType scope condition
+	assertTypeEqual (makeType "Bool") conditionType (expressionAt condition)
+	thenScope <- verifyStatementBlock scope bodyThen
+	elseScope <- verifyStatementBlock scope bodyElse
+	return scope{hasReturned = hasReturned thenScope && hasReturned elseScope}
 -- The catch-all for the rest:
 verifyStatementTypeDeclare scope statement = verifyStatementType scope statement >> return scope
 
@@ -421,11 +429,13 @@ verifyStatementType scope (StatementReturn _returnToken (Just value)) = do
 	case unifyTypes (mustReturn scope) valueType [] of
 		Left msg -> flunk (expressionAt value) $ "illegal return value: " ++ msg
 		Right _ -> return ()
-verifyStatementType scope (StatementFunc _funcToken _ generics arguments bang returns body) = do
+verifyStatementType scope (StatementFunc _funcToken funcName generics arguments bang returns body) = do
 	verifyTypeScope scope funcType
 	let scopeBody = setReturn returnType $ addVariables AssignFinal arguments $ declareTypes (map (\g -> (token g, [], [])) generics) $ scope
 	_ <- verifyStatementBlock scopeBody body
-	return ()
+	case returnType' === makeType "Void" || hasReturned scopeBody of
+		True -> return () -- doesn't require that we've reached a return
+		False -> flunk funcName $ "function `" ++ token funcName ++ "` isn't a Void function, but fails to return unconditionally"
 	where
 	returnType' = case returns of
 		Nothing -> makeType "Void"
@@ -446,9 +456,11 @@ verifyStatementType scope (StatementLet _ body) = do
 verifyStatementType _scope StatementStruct{} = return () -- TODO: kinds / concreteness?
 verifyStatementBlock :: Scope -> [Statement] -> Check Scope
 verifyStatementBlock scope [] = return scope
-verifyStatementBlock scope (s : ss) = do
-	scope' <- verifyStatementTypeDeclare scope s
-	verifyStatementBlock scope' ss
+verifyStatementBlock scope (s : ss)
+	|hasReturned scope = flunk (statementAt s) $ "statement is unreachable"
+	|otherwise = do
+		scope' <- verifyStatementTypeDeclare scope s
+		verifyStatementBlock scope' ss
 
 topScope :: Scope
 topScope =
