@@ -432,8 +432,8 @@ verifyStatementType scope (StatementReturn _returnToken (Just value)) = do
 verifyStatementType scope (StatementFunc _funcToken funcName generics arguments bang returns body) = do
 	verifyTypeScope scope funcType
 	let scopeBody = setReturn returnType $ addVariables AssignFinal arguments $ declareTypes (map (\g -> (token g, [], [])) generics) $ scope
-	_ <- verifyStatementBlock scopeBody body
-	case returnType' === makeType "Void" || hasReturned scopeBody of
+	finalBodyScope <- verifyStatementBlock scopeBody body
+	case returnType' === makeType "Void" || hasReturned finalBodyScope of
 		True -> return () -- doesn't require that we've reached a return
 		False -> flunk funcName $ "function `" ++ token funcName ++ "` isn't a Void function, but fails to return unconditionally"
 	where
