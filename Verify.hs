@@ -164,10 +164,12 @@ getExpressionType scope (ExpressionCall funValue funArgs) = do
 	match' fun (arg : _) _ _ = flunk (expressionAt arg) $ "cannot apply argument to object with non-function type `" ++ niceType fun ++ "`"
 
 getExpressionType _scope (ExpressionBang bang) = flunk bang "a bang `!` outside of a matching function call is not allowed"
-getExpressionType scope (ExpressionFunc _funcToken generics args bang returns body) = do
+getExpressionType scope (ExpressionFunc funcToken generics args bang returns body) = do
 	let scopeBody = setReturn returnType $ addVariables AssignFinal args scope
-	_ <- verifyStatementBlock scopeBody body
-	Pass funcType
+	finalScopeBody <- verifyStatementBlock scopeBody body
+	case returnType' === makeType "Void" || hasReturned finalScopeBody of
+		True -> return funcType
+		False -> flunk funcToken $ "function is not Void but fails to unconditionally return"
 	where
 	returnType' = case returns of
 		Nothing -> makeType "Void"
