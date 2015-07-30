@@ -67,11 +67,10 @@ data AssignState = AssignFinal | AssignNot | Assigned deriving (Show, Eq)
 data Scope = Scope
 	{ scopeReturnType :: Type -- return type
 	, scopeTypes :: [(String, [String], [(String, Type)])] -- type names in scope
-	, scopeStackAssign :: [(AssignState, Token, Type)] -- stack & globals
+	, scopeStack :: [(Token, Type)] -- stack & globals
+	, assignStates :: [(AssignState, Token)]
+	, hasReturned :: Bool
 	} deriving Show
-
-scopeStack :: Scope -> [(Token, Type)]
-scopeStack = map (\(_,b,c) -> (b, c)) . scopeStackAssign
 
 getType :: Token -> Scope -> Maybe Type
 getType name scope = case filter (\(n, _) -> token n == token name) (scopeStack scope) of
@@ -79,7 +78,7 @@ getType name scope = case filter (\(n, _) -> token n == token name) (scopeStack 
 	((_, t):_) -> Just t
 
 addVariable :: AssignState -> Token -> Type -> Scope -> Scope
-addVariable assignState varName varType (Scope returns types scope) = Scope returns types $ (assignState, varName, varType) : scope
+addVariable assignState varName varType scope@Scope{scopeStack, assignStates} = scope{scopeStack = (varName, varType) : scopeStack, assignStates = (assignState, varName) : assignStates}
 
 addVariables :: AssignState -> [(Token, Type)] -> Scope -> Scope
 addVariables _ [] scope = scope
@@ -87,33 +86,33 @@ addVariables assignState ((n, t) : rest) scope = addVariables assignState rest $
 
 tryAssignment :: Token -> Scope -> Check Scope
 tryAssignment var scope = do
-	fixedUp <- fixUp (scopeStackAssign scope)
-	return $ scope{ scopeStackAssign = fixedUp }
+	fixedUp <- fixUp (assignStates scope)
+	return $ scope{ assignStates = fixedUp }
 	where
-	fixUp [] = return []
-	fixUp (triple@(assignState, varName, varType) : rest)
+	fixUp [] = error $ "tried to assign unknown variable " ++ show var
+	fixUp (pair@(assignState, varName) : rest)
 		|token varName == token var = case assignState of
 			AssignFinal -> flunk var $ "variable `" ++ token var ++ "` is final and cannot be assigned to"
-			Assigned -> return $ (Assigned, varName, varType) : rest
-			AssignNot -> return $ (Assigned, varName, varType) : rest
+			Assigned -> return $ (Assigned, varName) : rest
+			AssignNot -> return $ (Assigned, varName) : rest
 		|otherwise = do
 			rest' <- fixUp rest
-			return $ triple : rest'
+			return $ pair : rest'
 
 declareType :: String -> [String] -> [(String, Type)] -> Scope -> Scope
-declareType struct generics args (Scope returns types scope) = Scope returns ((struct, generics, args) : types) scope
+declareType struct generics args scope@Scope{scopeTypes} = scope{scopeTypes = (struct, generics, args) : scopeTypes}
 
 declareTypes :: [(String, [String], [(String, Type)])] -> Scope -> Scope
 declareTypes [] scope = scope
 declareTypes (p:ps) scope = declareTypes ps $ (\(x,y,z) -> declareType x y z) p scope
 
 isTypeDeclared :: String -> Scope -> Bool
-isTypeDeclared n (Scope _ types _) = n `elem` map (\(n',_,_) -> n') types
+isTypeDeclared n Scope{scopeTypes} = n `elem` map (\(n',_,_) -> n') scopeTypes
 
 lookupTypeDeclaration :: Type -> Scope -> Either String [(String, Type)]
-lookupTypeDeclaration structType (Scope _ types _) = case canonical of
+lookupTypeDeclaration structType Scope{scopeTypes} = case canonical of
 	Left _ -> Left $ "The type `" ++ niceType structType ++ "` is not a struct-type"
-	Right (CanonicalType name generics) -> case [ (generics', fields') | (name', generics', fields') <- types, name == name' ] of
+	Right (CanonicalType name generics) -> case [ (generics', fields') | (name', generics', fields') <- scopeTypes, name == name' ] of
 		[] -> Left $ "There is no type with name `" ++ name ++ "`"
 		((generics', fields'):_) -> case length generics' == length generics of
 			False -> Left $ "struct type `" ++ name ++ "` expects " ++ show (length generics') ++ " type arguments, but it has been given " ++ show (length generics)
@@ -122,10 +121,10 @@ lookupTypeDeclaration structType (Scope _ types _) = case canonical of
 	canonical = canonicalType structType
 
 mustReturn :: Scope -> Type
-mustReturn (Scope r _ _) = r
+mustReturn Scope{scopeReturnType} = scopeReturnType
 
 setReturn :: Type -> Scope -> Scope
-setReturn r (Scope _ ks ts) = Scope r ks ts
+setReturn r scope = scope{scopeReturnType = r}
 
 assertTypeEqual :: Type -> Type -> Token -> Check ()
 assertTypeEqual left right atToken
@@ -455,24 +454,41 @@ topScope :: Scope
 topScope =
 	Scope (makeType "Void")
 		[ ("Void", [], []), ("Int", [], []), ("String", [], []), ("Bool", [], []), ("Integer", [], []) ]
-		[ (AssignFinal, Token "print" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` TypeBangArrow (Token "!" (FileEnd "*") Special) (makeType "Void"))
-		, (AssignFinal, Token "putStr" (FileEnd "^") Identifier, makeType "String" `TypeArrow` TypeBangArrow (Token "!" (FileEnd "*") Special) (makeType "Void"))
-		, (AssignFinal, Token "not" (FileEnd "^") Identifier, makeType "Bool" `TypeArrow` makeType "Bool")
-		, (AssignFinal, Token "show" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` makeType "String")
-		, (AssignFinal, Token "iAdd" (FileEnd "^") Identifier, binType (makeType "Integer"))
-		, (AssignFinal, Token "iSubtract" (FileEnd "^") Identifier, binType (makeType "Integer"))
-		, (AssignFinal, Token "iMultiply" (FileEnd "^") Identifier, binType (makeType "Integer"))
-		, (AssignFinal, Token "iDivide" (FileEnd "^") Identifier, binType (makeType "Integer"))
-		, (AssignFinal, Token "iMod" (FileEnd "^") Identifier, binType (makeType "Integer"))
-		, (AssignFinal, Token "iNegate" (FileEnd "^") Identifier, makeType "Integer" `TypeArrow` makeType "Integer" )
-		, (AssignFinal, Token "iPrint" (FileEnd "^") Identifier, makeType "Integer" `TypeArrow` TypeBangArrow (Token "!" (FileEnd "*") Special) (makeType "Void"))
-		, (AssignFinal, Token "iLess" (FileEnd "^") Identifier, relation (makeType "Integer"))
-		, (AssignFinal, Token "iEquals" (FileEnd "^") Identifier, relation (makeType "Integer"))
-		, (AssignFinal, Token "big" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` makeType "Integer")
+		[ (Token "print" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` TypeBangArrow (Token "!" (FileEnd "*") Special) (makeType "Void"))
+		, (Token "putStr" (FileEnd "^") Identifier, makeType "String" `TypeArrow` TypeBangArrow (Token "!" (FileEnd "*") Special) (makeType "Void"))
+		, (Token "not" (FileEnd "^") Identifier, makeType "Bool" `TypeArrow` makeType "Bool")
+		, (Token "show" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` makeType "String")
+		, (Token "iAdd" (FileEnd "^") Identifier, binType (makeType "Integer"))
+		, (Token "iSubtract" (FileEnd "^") Identifier, binType (makeType "Integer"))
+		, (Token "iMultiply" (FileEnd "^") Identifier, binType (makeType "Integer"))
+		, (Token "iDivide" (FileEnd "^") Identifier, binType (makeType "Integer"))
+		, (Token "iMod" (FileEnd "^") Identifier, binType (makeType "Integer"))
+		, (Token "iNegate" (FileEnd "^") Identifier, makeType "Integer" `TypeArrow` makeType "Integer" )
+		, (Token "iPrint" (FileEnd "^") Identifier, makeType "Integer" `TypeArrow` TypeBangArrow (Token "!" (FileEnd "*") Special) (makeType "Void"))
+		, (Token "iLess" (FileEnd "^") Identifier, relation (makeType "Integer"))
+		, (Token "iEquals" (FileEnd "^") Identifier, relation (makeType "Integer"))
+		, (Token "big" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` makeType "Integer")
 		]
+		[ (AssignFinal, foreignToken "print")
+		, (AssignFinal, foreignToken "putStr")
+		, (AssignFinal, foreignToken "not")
+		, (AssignFinal, foreignToken "show")
+		, (AssignFinal, foreignToken "iAdd")
+		, (AssignFinal, foreignToken "iSubtract")
+		, (AssignFinal, foreignToken "iMultiply")
+		, (AssignFinal, foreignToken "iDivide")
+		, (AssignFinal, foreignToken "iMod")
+		, (AssignFinal, foreignToken "iNegate")
+		, (AssignFinal, foreignToken "iPrint")
+		, (AssignFinal, foreignToken "iLess")
+		, (AssignFinal, foreignToken "iEquals")
+		, (AssignFinal, foreignToken "big")
+		]
+		False
 	where
 	binType t = t `TypeArrow` (t `TypeArrow` t)
 	relation t = t `TypeArrow` (t `TypeArrow` makeType "Bool")
+	foreignToken name = Token name (FileEnd "^") Identifier
 
 verifyProgram :: Statement -> Check ()
 verifyProgram program = verifyStatementTypeDeclare topScope program >> return ()
