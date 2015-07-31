@@ -63,12 +63,13 @@ expressionAt (ExpressionPrefix op _) = op
 expressionAt (ExpressionConstructor t _) = typeAt t
 
 data AssignState = AssignFinal | AssignNot | Assigned deriving (Show, Eq)
+data Marker = Mark | Protect deriving (Show, Eq)
 
 data Scope = Scope
 	{ scopeReturnType :: Type -- return type
 	, scopeTypes :: [(String, [String], [(String, Type)])] -- type names in scope
 	, scopeStack :: [(Token, Type)] -- stack & globals
-	, assignStates :: [(AssignState, Token)]
+	, assignStates :: [Either Marker (AssignState, Token)]
 	, hasReturned :: Bool
 	} deriving Show
 
@@ -78,11 +79,34 @@ getType name scope = case filter (\(n, _) -> token n == token name) (scopeStack 
 	((_, t):_) -> Just t
 
 addVariable :: AssignState -> Token -> Type -> Scope -> Scope
-addVariable assignState varName varType scope@Scope{scopeStack, assignStates} = scope{scopeStack = (varName, varType) : scopeStack, assignStates = (assignState, varName) : assignStates}
+addVariable assignState varName varType scope@Scope{scopeStack, assignStates} = scope{scopeStack = (varName, varType) : scopeStack, assignStates = Right (assignState, varName) : assignStates}
 
 addVariables :: AssignState -> [(Token, Type)] -> Scope -> Scope
 addVariables _ [] scope = scope
 addVariables assignState ((n, t) : rest) scope = addVariables assignState rest $ addVariable assignState n t scope
+
+addProtect :: Scope -> Scope
+addProtect scope = scope{assignStates = Left Protect : assignStates scope}
+
+getAssignState :: Token -> Scope -> AssignState
+getAssignState name Scope{assignStates} = case filter filterer assignStates of
+	[] -> error "!!! COMPILER ERROR: asked for assign state of undefined variable"
+	(Right (s, _)  : _) -> s
+	_ -> error "!!! COMPILER ERROR: asked for assign state and got a LEFT"
+	where
+	filterer (Right (_, v)) = token v == token name
+	filterer _ = False
+
+
+addLevel :: Scope -> Scope
+addLevel scope = scope{assignStates = Left Mark : assignStates scope}
+
+dropLevel :: Scope -> Scope
+dropLevel scope@Scope{assignStates} = case assignStates of
+	[] -> scope{assignStates = []}
+	(Left Protect : rest) -> scope{assignStates = rest}
+	(Left Mark : rest) -> scope{assignStates = rest}
+	(_ : rest) -> dropLevel scope{assignStates = rest}
 
 tryAssignment :: Token -> Scope -> Check Scope
 tryAssignment var scope = do
@@ -90,14 +114,18 @@ tryAssignment var scope = do
 	return $ scope{ assignStates = fixedUp }
 	where
 	fixUp [] = error $ "tried to assign unknown variable " ++ show var
-	fixUp (pair@(assignState, varName) : rest)
+	fixUp (pair@(Right(assignState, varName)) : rest)
 		|token varName == token var = case assignState of
 			AssignFinal -> flunk var $ "variable `" ++ token var ++ "` is final and cannot be assigned to"
-			Assigned -> return $ (Assigned, varName) : rest
-			AssignNot -> return $ (Assigned, varName) : rest
+			Assigned -> return $ Right(Assigned, varName) : rest
+			AssignNot -> return $ Right(Assigned, varName) : rest
 		|otherwise = do
 			rest' <- fixUp rest
 			return $ pair : rest'
+	fixUp (Left Protect : _) = flunk var $ "variable `" ++ token var ++ "` cannot be assigned; you cannot assign implicit parameters"
+	fixUp (Left Mark : rest) = do
+		rest' <- fixUp rest
+		return $ Left Mark : rest'
 
 declareType :: String -> [String] -> [(String, Type)] -> Scope -> Scope
 declareType struct generics args scope@Scope{scopeTypes} = scope{scopeTypes = (struct, generics, args) : scopeTypes}
@@ -134,7 +162,10 @@ assertTypeEqual left right atToken
 getExpressionType :: Scope -> Expression -> Check Type
 getExpressionType scope (ExpressionIdentifier name) = case getType name scope of
 	Nothing -> flunk name $ "variable `" ++ token name ++ "` has not been declared or is not in scope"
-	Just t -> Pass t
+	Just t -> case getAssignState name scope of
+		Assigned -> Pass t
+		AssignFinal -> Pass t
+		AssignNot -> flunk name $ "variable `" ++ token name ++ "` cannot be read because it might not have been initialized"
 getExpressionType _scope (ExpressionIntegerLiteral _) = Pass (makeType "Int")
 getExpressionType _scope (ExpressionDecimalLiteral _) = Pass (makeType "Float")
 getExpressionType _scope (ExpressionStringLiteral _) = Pass (makeType "String")
@@ -165,8 +196,8 @@ getExpressionType scope (ExpressionCall funValue funArgs) = do
 
 getExpressionType _scope (ExpressionBang bang) = flunk bang "a bang `!` outside of a matching function call is not allowed"
 getExpressionType scope (ExpressionFunc funcToken generics args bang returns body) = do
-	let scopeBody = setReturn returnType $ addVariables AssignFinal args scope
-	finalScopeBody <- verifyStatementBlock scopeBody body
+	let scopeBody = setReturn returnType' $ addVariables AssignFinal args scope
+	finalScopeBody <- verifyStatementBlock (addProtect scopeBody) body
 	case returnType' === makeType "Void" || hasReturned finalScopeBody of
 		True -> return funcType
 		False -> flunk funcToken $ "function is not Void but fails to unconditionally return"
@@ -294,7 +325,7 @@ verifyStatementTypeDeclare scope statement@StatementFunc{funcName, genericsState
 		Nothing -> return ()
 		Just other -> flunk funcName $ "variable `" ++ token funcName ++ "` has already been declared at " ++ show other
 	let newScope = addVariable AssignFinal funcName funcType scope
-	verifyStatementType newScope statement
+	verifyStatementType (addProtect newScope) statement
 	return newScope
 	where
 	lookUp k m = case [k' | (k', _) <- m, token k == token k'] of
@@ -377,12 +408,47 @@ verifyStatementTypeDeclare scope statement@(StatementStruct _ structName generic
 verifyStatementTypeDeclare scope statement@StatementReturn{} = do
 	verifyStatementType scope statement
 	return scope{hasReturned = True}
+verifyStatementTypeDeclare scope statement@StatementIf{} = do
+	-- TODO: check whether this is required
+	verifyStatementType (addLevel scope) statement -- we don't strictly need this (yet)
+	return scope
+verifyStatementTypeDeclare scope statement@StatementWhile{} = do
+	-- TODO: check whether this is required
+	verifyStatementType (addLevel scope) statement -- we don't strictly need this (yet)
+	return scope
 verifyStatementTypeDeclare scope (StatementIfElse _ condition bodyThen bodyElse) = do
 	conditionType <- getExpressionType scope condition
 	assertTypeEqual (makeType "Bool") conditionType (expressionAt condition)
-	thenScope <- verifyStatementBlock scope bodyThen
-	elseScope <- verifyStatementBlock scope bodyElse
-	return scope{hasReturned = hasReturned thenScope && hasReturned elseScope}
+	thenScope <- verifyStatementBlock (addLevel scope) bodyThen
+	elseScope <- verifyStatementBlock (addLevel scope) bodyElse
+	let scope' = scope{hasReturned = hasReturned thenScope && hasReturned elseScope}
+	return $ fixScope scope' thenScope elseScope
+	where
+	fixScope scope' thenScope elseScope = scope'{ assignStates = map together $ zip assignThen assignElse }
+		where
+		thenScope' = dropLevel thenScope
+		elseScope' = dropLevel elseScope
+		assignThen = through thenScope'
+		assignElse = through elseScope'
+		together (Right (sA, v), Right (sB, v'))
+			|token v /= token v' = error $ "!!! COMPILER ERROR: matched `" ++ show v ++ "` with `" ++ show v' ++ "`"
+			|otherwise = Right (sA `also` sB , v)
+		together (Left m, Left m')
+			|m == m' = Left m
+			|otherwise = error $ "!!! COMPILER ERROR: matched incompatible " ++ show m ++ " with " ++ show m'
+		together (x, y) = error $ "!!! COMPILER ERROR: matched incompatible " ++ show x ++ " with " ++ show y
+		also Assigned Assigned = Assigned
+		also AssignNot Assigned = AssignNot
+		also Assigned AssignNot = AssignNot
+		also x y
+			|x == y = x
+			|otherwise = error $ "!!! COMPILER ERROR: matched incompatible " ++ show x ++ " and " ++ show y
+		through s = case hasReturned s of
+			True -> map allAssigned $ assignStates s
+			False -> assignStates s
+		allAssigned (Right (AssignNot, v)) = Right (Assigned, v)
+		allAssigned x = x
+
 -- The catch-all for the rest:
 verifyStatementTypeDeclare scope statement = verifyStatementType scope statement >> return scope
 
@@ -433,7 +499,7 @@ verifyStatementType scope (StatementReturn _returnToken (Just value)) = do
 		Right _ -> return ()
 verifyStatementType scope (StatementFunc _funcToken funcName generics arguments bang returns body) = do
 	verifyTypeScope scope funcType
-	let scopeBody = setReturn returnType $ addVariables AssignFinal arguments $ declareTypes (map (\g -> (token g, [], [])) generics) $ scope
+	let scopeBody = setReturn returnType' $ addVariables AssignFinal arguments $ declareTypes (map (\g -> (token g, [], [])) generics) $ scope
 	finalBodyScope <- verifyStatementBlock scopeBody body
 	case returnType' === makeType "Void" || hasReturned finalBodyScope of
 		True -> return () -- doesn't require that we've reached a return
@@ -483,26 +549,29 @@ topScope =
 		, (Token "iEquals" (FileEnd "^") Identifier, relation (makeType "Integer"))
 		, (Token "big" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` makeType "Integer")
 		]
-		[ (AssignFinal, foreignToken "print")
-		, (AssignFinal, foreignToken "putStr")
-		, (AssignFinal, foreignToken "not")
-		, (AssignFinal, foreignToken "show")
-		, (AssignFinal, foreignToken "iAdd")
-		, (AssignFinal, foreignToken "iSubtract")
-		, (AssignFinal, foreignToken "iMultiply")
-		, (AssignFinal, foreignToken "iDivide")
-		, (AssignFinal, foreignToken "iMod")
-		, (AssignFinal, foreignToken "iNegate")
-		, (AssignFinal, foreignToken "iPrint")
-		, (AssignFinal, foreignToken "iLess")
-		, (AssignFinal, foreignToken "iEquals")
-		, (AssignFinal, foreignToken "big")
-		]
+		(map foreignSet
+			[  "print"
+			,  "putStr"
+			,  "not"
+			,  "show"
+			,  "iAdd"
+			, "iSubtract"
+			, "iMultiply"
+			,  "iDivide"
+			,  "iMod"
+			,  "iNegate"
+			,  "iPrint"
+			,  "iLess"
+			,  "iEquals"
+			,  "big"
+			]
+		)
 		False
 	where
 	binType t = t `TypeArrow` (t `TypeArrow` t)
 	relation t = t `TypeArrow` (t `TypeArrow` makeType "Bool")
 	foreignToken name = Token name (FileEnd "^") Identifier
+	foreignSet name = Right (AssignFinal, foreignToken name)
 
 verifyProgram :: Statement -> Check ()
 verifyProgram program = verifyStatementTypeDeclare topScope program >> return ()
