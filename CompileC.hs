@@ -15,6 +15,10 @@ import ParseType(niceType)
 preludeSource :: String
 preludeSource = unsafePerformIO $ readFile "prelude.c"
 
+{-# NOINLINE preludeMain #-}
+preludeMain :: String
+preludeMain = unsafePerformIO $ readFile "preludeMain.c"
+
 newtype FunctionID = FunctionID Int deriving (Show, Eq)
 
 data IDGenerator = IDGenerator{next :: (FunctionID, IDGenerator)}
@@ -37,6 +41,9 @@ data Compiled a = Compiled [CompiledFunction] a deriving Show
 
 data I
 	= IName String -- a lexical name (in the sense)
+	| IInt String
+	| IDecimal String
+	| IString String
 	| ILiteral String
 	| ICall I [I]
 	| IForce I
@@ -68,20 +75,24 @@ tab str = '\t' : tab' str where
 serialize :: I -> String
 serialize (IName ('$':n)) = n
 serialize (IName n) = "_" ++ n
-serialize (ILiteral s) = s
-serialize (ICall f a) = "Call(" ++ serialize f ++ ", " ++ len ++ ", (Value[" ++ len ++ "]){" ++ intercalate ", " (map serialize a) ++ "})"
-	where len = show $ length a
+serialize (IInt i) = "MakeInt(" ++ i ++ ")"
+serialize (IDecimal d) = "MakeDecimal(" ++ d ++ ")"
+serialize (IString s) = "MakeString(" ++ s ++ ")"
+serialize (ILiteral s) = s ++ "/*iliteral*/"
+serialize (ICall f xs) = go (serialize f) xs
+	where
+	go fun [] = fun
+	go fun (arg:args) = go ("Call(" ++ fun ++ ", " ++ serialize arg ++ ")") args
 serialize (IForce x) = "Force(" ++ serialize x ++ ")"
-
-serialize (IPartial funID capacity args) = "Partial(" ++ (serialize $ compileID funID) ++ ", " ++ show capacity ++ ", " ++ len ++ ", (Value[" ++ len ++ "]){" ++ intercalate ", " (map serialize args) ++ "})"
-	where len = show $ length args
+serialize (IPartial funID capacity []) = "Partial( ( void(*)() )" ++ (serialize $ compileID funID) ++ ", " ++ show capacity ++ ")"
+serialize (IPartial funID capacity args) = serialize $ (IPartial funID capacity []) `ICall` args
 serialize (IConstructor name fields) = "Constructor(\"" ++ show name ++ "\", " ++ len ++ ", " ++ fieldNames ++ ", " ++ fieldValues ++ ")"
 	where
-		fieldNames = "(const char*[" ++ len ++ "]){" ++ intercalate ", " (map fieldNamer fields) ++ "}"
-		fieldValues = "(Value[" ++ len ++ "]){" ++ intercalate ", " (map fieldValuer fields) ++ "}"
-		fieldNamer (f, _) = "\"" ++ f ++ "\""
-		fieldValuer (_, t) = serialize t
-		len = show $ length fields
+	fieldNames = "(const char*[" ++ len ++ "]){" ++ intercalate ", " (map fieldNamer fields) ++ "}"
+	fieldValues = "(Value[" ++ len ++ "]){" ++ intercalate ", " (map fieldValuer fields) ++ "}"
+	fieldNamer (f, _) = "\"" ++ f ++ "\""
+	fieldValuer (_, t) = serialize t
+	len = show $ length fields
 serialize (IDot left name) = "Dot(" ++ serialize left ++ ", \"" ++ show name ++ "\")"
 serialize (IAssign v e) = serialize v ++ " = " ++ serialize e ++ ";\n"
 serialize (IVar v) = "Value " ++ serialize v ++ ";\n"
@@ -92,10 +103,10 @@ serialize (IWhile c b) = "while (Bool(" ++ serialize c ++ ")) {\n" ++ (tab $ con
 serialize (IDo e) = serialize e ++ ";\n"
 
 serialize (IFunc funID args body) =
-	"Value " ++ serialize (compileID funID) ++ "(Value " ++ intercalate ", Value " (map (serialize . IName) args) ++ ") {\n" ++ (tab $ concat $ map serialize body) ++ "\treturn Unit;\n}\n"
+	"Value " ++ serialize (compileID funID) ++ "(Value " ++ intercalate ", Value " (map (serialize . IName) args) ++ ") {\n\tif(DEBUG)printf(\"@%d\\n\",__LINE__);\n" ++ (tab $ concat $ map serialize body) ++ "\treturn Unit;\n}\n"
 
 serialize IBreak = "break;\n"
-serialize (IReturn e) = "return " ++ serialize e ++ ";\n"
+serialize (IReturn e) = "return VALIDATE(" ++ serialize e ++ ");\n"
 serialize (ISequence s) = concat $ map serialize s
 serialize (IComment comment) = "// " ++ comment ++ "\n"
 
@@ -192,9 +203,9 @@ containedVariables' [] = []
 
 compileExpression :: IDGenerator -> Expression -> Compiled (IDGenerator, I)
 compileExpression gen (ExpressionIdentifier t) = return (gen, IName $ token t)
-compileExpression gen (ExpressionIntegerLiteral t) = return (gen, ILiteral $ token t)
-compileExpression gen (ExpressionDecimalLiteral t) = return (gen, ILiteral $ token t)
-compileExpression gen (ExpressionStringLiteral t) = return (gen, ILiteral $ show $ token t)
+compileExpression gen (ExpressionIntegerLiteral t) = return (gen, IInt $ token t)
+compileExpression gen (ExpressionDecimalLiteral t) = return (gen, IDecimal $ token t)
+compileExpression gen (ExpressionStringLiteral t) = return (gen, IString $ show $ token t)
 compileExpression gen (ExpressionBoolLiteral t) =
 	return (gen, ILiteral $ case token t of "True" -> "true"; "False" -> "false"; _ -> error "invalid boolean constant")
 compileExpression gen (ExpressionBang _) = return (gen, IName "Bang")
@@ -214,7 +225,7 @@ compileExpression gen e@ExpressionFunc{ arguments, funcBang, body } = do
 compileExpression gen (ExpressionOp left op right) = do
 	(gen', left') <- compileExpression gen left
 	(gen'', right') <- compileExpression gen' right
-	return (gen'', ICall (IName $ "$Operator" ++ concat (map speak $ token op) ) [left', right'])
+	return (gen'', (IName $ "$Partial((void(*)())Operator" ++ concat (map speak $ token op) ++ ", 2)") `ICall` [left', right'])
 	where
 		speak '+' = "Plus"
 		speak '-' = "Minus"
@@ -328,6 +339,7 @@ compileProgram statement = case compileStatement newGenerator statement of
 		concat (map headerGenerator headers) ++
 		"\n\n// function definitions\n" ++
 		concat (map (\(CompiledFunction _ v _) -> serialize v) headers) ++
-		"\n\n// Program\n" ++
-		tab (serialize value) ++ "\n// Call main\nint main() {\n\t" ++
-		"Force(Call(" ++ (serialize $ IName "main") ++ ", 1, (Value[1]){Bang}));\nreturn 0;\n}"
+		"\n\n// Program\n\nint main() {\n" ++
+		tab (preludeMain) ++ "\n" ++
+		tab (serialize value) ++ "\n\n\t" ++
+		"Force(Call(" ++ (serialize $ IName "main") ++ ", Bang));\n\treturn 0;\n}\n"

@@ -7,6 +7,10 @@
 #include "stdlib.h"
 #include "string.h"
 
+#define VALIDATE(x) _Validate(x, __LINE__)
+
+const int DEBUG = 0;
+
 struct Value;
 
 typedef struct Value Value;
@@ -20,19 +24,19 @@ typedef struct {
 
 typedef struct {
 	Value * fun;
-	Value * args;
-	int argCount;
+	Value * arg;
 } CallValue;
 
 typedef enum {false, true} bool;
 
-typedef enum {NO_TYPE, UNIT, BANG, PARTIAL, CALL, INTEGER} KIND;
+typedef enum {NO_TYPE, UNIT, BANG, PARTIAL, CALL, INTEGER, DOUBLE} KIND;
 
 typedef union {
 	void * value;
 	void (*function)();
 	PartialValue partial;
 	int intValue;
+	double doubleValue;
 	CallValue call;
 } ValueData;
 
@@ -50,21 +54,50 @@ typedef struct {
 const Value Unit = {UNIT};
 const Value Bang = {BANG};
 
-Value Call(Value fun, int argCount, Value * args) {
-	Value call = {CALL};
+Value Call(Value fun, Value arg) {
+	if (DEBUG) {
+		printf("Call(%d, %d)\n", fun.kind, arg.kind);
+	}
+	Value call;
+	call.kind = CALL;
 	call.data.call.fun = malloc(sizeof(Value));
 	*call.data.call.fun = fun;
-	call.data.call.args = malloc(sizeof(Value) * argCount);
-	memcpy(call.data.call.args, args, sizeof(Value) * argCount);
-	call.data.call.argCount = argCount;
+	call.data.call.arg = malloc(sizeof(Value));
+	*call.data.call.arg = arg;
 	return call;
 }
 
-Value Invoke(PartialValue function, int argc, Value * argv) {
+Value _Validate(Value value, int source) {
+	if (DEBUG) {
+		printf("Validate %d @%d\n", value.kind, source);
+		if (value.kind == PARTIAL) {
+			printf("Validate of PARTIAL\n");
+			printf("\tapplied: %d\tcapacity: %d\n", value.data.partial.applied, value.data.partial.capacity);
+			int i = 0;
+			for (i = 0; i < value.data.partial.applied; i++) {
+				printf("\t\targ %d has kind %d\n", i, value.data.partial.arguments[i]);
+			}
+		}
+	}
+	return value;
+}
+
+Value Invoke(void(*function)(), int argc, Value * argv) {
+	if (DEBUG) {
+		printf("Invoke(function, argc:%d, argv:%ld)\n", argc, argv);
+		printf("Invoke args:\n");
+		int i;
+		for (i = 0; i < argc; i++) {
+			printf("\t%d\n", argv[i].kind);
+		}
+	}
 #include "invokebody.c"
 }
 
 Value Force(Value value) {
+	if (DEBUG) {
+		printf("Force(%d)\n", value.kind);
+	}
 	switch (value.kind) {
 	case PARTIAL:
 		if (value.data.partial.applied == value.data.partial.capacity) {
@@ -72,89 +105,130 @@ Value Force(Value value) {
 		} else {
 			return value;
 		}
-	case CALL:
-		Value fun = Force(*value.data.call.fun);
-		if (value.data.call.argCount == 0) {
-			return fun;
-		}
-		if (fun.kind != PARTIAL) {
-			printf("evaluating this function produced kind = %d, not the expected %d", fun.kind, PARTIAL);
+	case CALL:;
+		Value funValue = Force(*value.data.call.fun);
+		if (funValue.kind != PARTIAL) {
+			printf("expected PARTIAL (%d) in Force Call but got %d\n", PARTIAL, funValue.kind);
 			exit(-1);
 		}
-		Value copy = fun;
-		copy.data.partial.arguments = malloc(sizeof(Value) * copy.data.partial.capacity); // TODO: memory leak
-		memcpy(copy.data.partial.arguments, fun.data.partial.arguments, sizeof(Value) * fun.data.partial.applied);
-		copy.data.partial.arguments[fun.data.partial.applied++] = value.data.call.args[0];
-		
-		Value *copyPointer = malloc(sizeof(Value));
-		*copyPointer = copy; // TODO: memory leak
-
-		Value tail;
-		tail.kind = CALL;
-		tail.data.call.fun = copyPointer;
-		tail.data.call.args = value.data.call.args + 1;
-		tail.data.call.argCount =  value.data.call.argCount-1;
-
-		return Force(tail);
+		VALIDATE(funValue);
+		PartialValue fun = funValue.data.partial;
+		Value p;
+		p.kind = PARTIAL;
+		p.data.partial.capacity = fun.capacity;
+		p.data.partial.function = fun.function;
+		p.data.partial.applied = fun.applied + 1;
+		//
+		p.data.partial.arguments = malloc(sizeof(Value) * (p.data.partial.applied));
+		int i;
+		for (i = 0; i < fun.applied; i++) {
+			p.data.partial.arguments[i] = fun.arguments[i];
+		}
+		p.data.partial.arguments[fun.applied] = *value.data.call.arg;
+		return Force(VALIDATE(p));
 	case UNIT:
 	case BANG:
 	case INTEGER:
 		return value;
 	}
+	printf("unknown kind %d\n", value.kind);
+	exit(-1);
 	return value;
 }
 
-Value Partial(void (*function)(), int capacity, int argc, Value * argv) {
+Value Partial(void (*function)(), int capacity) {
 	Value v;
 	v.kind = PARTIAL;
 	v.data.partial.function = function;
 	v.data.partial.capacity = capacity;
-	v.data.partial.arguments = malloc(sizeof(Value) * capacity); // TODO: fix leak
-	return Call(v, argc, argv);
+	v.data.partial.applied = 0;
+	return v;
 }
 
 Value Constructor(const char * name, int len, const char ** names, Value * values) {
+	if (DEBUG) {
+		printf("@%d\n", __LINE__);
+	}
 
 }
 
 Value Dot(Value left, const char * field) {
+	if (DEBUG) {
+		printf("@%d\n", __LINE__);
+	}
 
 }
 
 // value must be forced
 bool Bool(Value value) {
+	if (DEBUG) {
+		printf("@%d\n", __LINE__);
+	}
 	// assert value.kind == INTEGER
 	return value.data.intValue;
 }
 
 // value must be forced
 int Integer(Value value) {
+	if (DEBUG) {
+		printf("@%d\n", __LINE__);
+	}
 	// assert value.kind == INTEGER
 	return value.data.intValue;
 }
 
+// <boxers>
+Value MakeInt(int n) {
+	if (DEBUG) {
+		printf("@%d\n", __LINE__);
+	}
+	Value v;
+	v.kind = INTEGER;
+	v.data.intValue = n;
+	return v;
+}
+
+Value MakeDecimal(double d) {
+	if (DEBUG) {
+		printf("@%d\n", __LINE__);
+	}
+	Value v;
+	v.kind = DOUBLE;
+	v.data.doubleValue = d;
+	return v;
+}
+// </boxers>
 
 // <operators>
 // int + int
 Value OperatorPlus(Value left, Value right) {
+	if (DEBUG) {
+		printf("@%d\n", __LINE__);
+	}
 	Value v;
 	v.kind = INTEGER;
-	v.data.integer = Integer(Force(left)) + Integer(Force(right));
+	v.data.intValue = Integer(Force(left)) + Integer(Force(right));
 	return v;
 }
 
 // int == int
 Value OperatorEqualsEquals(Value left, Value right) {
+	if (DEBUG) {
+		printf("@%d\n", __LINE__);
+	}
 	Value v;
 	v.kind = INTEGER;
-	v.value = Integer(Force(left)) == Integer(Force(right));
+	v.data.intValue = Integer(Force(left)) == Integer(Force(right));
 	return v;
 }
 // </operators>
 
 // <built-in>
 
-Value _print(Value number, Value bang) {
+Value b_print(Value number, Value bang) {
+	if (DEBUG) {
+		printf("@%d\n", __LINE__);
+	}
 	int q = Integer(Force(number));
 	printf("%d\n", q);
 	return Unit;

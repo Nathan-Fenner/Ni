@@ -18,7 +18,7 @@ for i = 0, 127 do
 		end
 		io.write("Value")
 	end
-	io.write("))function.function;\n")
+	io.write("))function;\n")
 	io.write("\t\treturn fn" .. i .. "(")
 	for j = 1, i do
 		if j > 1 then
