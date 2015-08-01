@@ -97,7 +97,6 @@ getAssignState name Scope{assignStates} = case filter filterer assignStates of
 	filterer (Right (_, v)) = token v == token name
 	filterer _ = False
 
-
 addLevel :: Scope -> Scope
 addLevel scope = scope{assignStates = Left Mark : assignStates scope}
 
@@ -133,6 +132,45 @@ declareType struct generics args scope@Scope{scopeTypes} = scope{scopeTypes = (s
 declareTypes :: [(String, [String], [(String, Type)])] -> Scope -> Scope
 declareTypes [] scope = scope
 declareTypes (p:ps) scope = declareTypes ps $ (\(x,y,z) -> declareType x y z) p scope
+
+data Kind = KindConcrete | KindArrow Kind Kind deriving (Show, Eq)
+
+checkTypeKind :: Scope -> Type -> Check Kind
+checkTypeKind Scope{scopeTypes} (TypeName name) = go scopeTypes where
+	go [] = flunk name $ "the type `" ++ token name ++ "` has not been declared"
+	go ((name', generics, _) : rest)
+		|token name == name' = return $ go' (length generics) 
+		|otherwise = go rest
+		where
+		go' 0 = KindConcrete
+		go' n = KindConcrete `KindArrow` go' (n-1)
+checkTypeKind scope (TypeCall fun callArgs) = do
+	funKind <- checkTypeKind scope fun
+	match fun funKind callArgs
+	where
+	match :: Type -> Kind -> [Type] -> Check Kind
+	match _ kind [] = return kind
+	match sofar KindConcrete (arg:_) = flunk (typeAt arg) $ "applied type `" ++ niceType arg ++ "` to a concrete type `" ++ niceType sofar ++ "`"
+	match sofar whole@(KindArrow left right) (arg:args) = do
+		argKind <- checkTypeKind scope arg
+		case left == argKind of
+			True -> match (TypeCall sofar [arg]) right args
+			False -> flunk (typeAt arg) $ "applied type `" ++ niceType arg ++ "` having kind " ++ show argKind ++ " to type `" ++ niceType sofar ++ "` having kind " ++ show whole ++ " (expecting argument to have kind " ++ show left ++ ")"
+checkTypeKind scope (TypeArrow left right) = do
+	checkTypeConcrete scope left
+	checkTypeConcrete scope right
+	return KindConcrete
+checkTypeKind scope (TypeBangArrow _ right) = do
+	checkTypeConcrete scope right
+	return KindConcrete
+checkTypeKind scope (TypeGenerics generics right) = checkTypeKind (declareTypes (map (\t -> (token t, [], [])) generics) scope) right
+
+checkTypeConcrete :: Scope -> Type -> Check ()
+checkTypeConcrete scope myType = do
+	kind <- checkTypeKind scope myType
+	case kind of
+		KindConcrete -> return ()
+		_ -> flunk (typeAt myType) $ "expected type `" ++ niceType myType ++ "` to be concrete, but has kind " ++ show kind
 
 isTypeDeclared :: String -> Scope -> Bool
 isTypeDeclared n Scope{scopeTypes} = n `elem` map (\(n',_,_) -> n') scopeTypes
@@ -281,16 +319,6 @@ getExpressionType scope (ExpressionDot left field) = do
 	lookUp k m = case [v | (k', v) <- m, k == k'] of
 		[] -> Nothing
 		(v : _) -> Just v
-
-
-verifyTypeScope :: Scope -> Type -> Check ()
-verifyTypeScope scope (TypeName t) = if token t `isTypeDeclared` scope then return () else flunk t ("type `" ++ token t ++ "` is not defined")
-verifyTypeScope scope (TypeCall fun args) = do
-	verifyTypeScope scope fun
-	mapM_ (verifyTypeScope scope) args
-verifyTypeScope scope (TypeBangArrow _ right) = verifyTypeScope scope right
-verifyTypeScope scope (TypeArrow left right) = verifyTypeScope scope left >> verifyTypeScope scope right
-verifyTypeScope scope (TypeGenerics generics value) = verifyTypeScope (declareTypes (map (\t -> (token t, [], [])) generics) scope) value
 
 -- Checks that declarations are unique
 verifyStatementTypeDeclare :: Scope -> Statement -> Check Scope
@@ -454,10 +482,10 @@ verifyStatementTypeDeclare scope statement = verifyStatementType scope statement
 
 verifyStatementType :: Scope -> Statement -> Check ()
 verifyStatementType scope (StatementVarVoid _ varType) = do
-	verifyTypeScope scope varType
+	checkTypeConcrete scope varType
 	return ()
 verifyStatementType scope (StatementVarAssign _ varType value) = do
-	verifyTypeScope scope varType
+	checkTypeConcrete scope varType
 	valueType <- getExpressionType scope value
 	case unifyTypes varType valueType [] of
 		Left msg -> flunk (expressionAt value) $ "illegal assignment: " ++ msg
@@ -498,7 +526,7 @@ verifyStatementType scope (StatementReturn _returnToken (Just value)) = do
 		Left msg -> flunk (expressionAt value) $ "illegal return value: " ++ msg
 		Right _ -> return ()
 verifyStatementType scope (StatementFunc _funcToken funcName generics arguments bang returns body) = do
-	verifyTypeScope scope funcType
+	checkTypeConcrete scope funcType
 	let scopeBody = setReturn returnType' $ addVariables AssignFinal arguments $ declareTypes (map (\g -> (token g, [], [])) generics) $ scope
 	finalBodyScope <- verifyStatementBlock scopeBody body
 	case returnType' === makeType "Void" || hasReturned finalBodyScope of
