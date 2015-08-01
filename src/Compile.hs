@@ -1,19 +1,14 @@
+
 {-# LANGUAGE NamedFieldPuns #-}
 
 module Compile where
 
-import System.IO.Unsafe(unsafePerformIO)
-
-import Data.List(intercalate, sort)
 import Control.Applicative
-import Expression
-import Lex(token)
-import ParseType(niceType)
+import Data.List(sort)
+import ParseType
 
--- Don't inline it, so that we read the file at most once.
-{-# NOINLINE preludeSource #-}
-preludeSource :: String
-preludeSource = unsafePerformIO $ readFile "prelude.js"
+import Expression
+import Lex
 
 newtype FunctionID = FunctionID Int deriving (Show, Eq)
 
@@ -31,21 +26,25 @@ functionIDGenerator n = IDGenerator{next = (FunctionID n, functionIDGenerator (n
 newGenerator :: IDGenerator
 newGenerator = functionIDGenerator 1
 
-data CompiledFunction = CompiledFunction FunctionID I deriving Show
+data CompiledFunction = CompiledFunction FunctionID I Int deriving Show
 
 data Compiled a = Compiled [CompiledFunction] a deriving Show
 
 data I
 	= IName String -- a lexical name (in the sense)
+	| IOperator String
+	| IInt String
+	| IDecimal String
+	| IString String
 	| ILiteral String
 	| ICall I [I]
 	| IForce I
 	| IPartial FunctionID Int [I]
 	| IConstructor String [(String, I)]
 	| IDot I String
-	| IAssign String I
-	| IVar String
-	| IVarAssign String I
+	| IAssign I I
+	| IVar I
+	| IVarAssign I I
 	| IIf I [I] [I]
 	| IWhile I [I]
 	| IDo I
@@ -56,39 +55,6 @@ data I
 	| IComment String
 	deriving Show
 
-
-tab :: String -> String
-tab "" = ""
-tab str = '\t' : tab' str where
-	tab' "\n" = "\n"
-	tab' "" = ""
-	tab' ('\n':cs) = '\n' : '\t' : tab' cs
-	tab' (c : cs) = c : tab' cs
-	
-
-serialize :: I -> String
-serialize (IName n) = n
-serialize (ILiteral s) = s
-serialize (ICall f a) = "$Call(" ++ serialize f ++ ", [" ++ intercalate ", " (map serialize a) ++ "])"
-serialize (IForce x) = "$Force(" ++ serialize x ++ ")"
-serialize (IPartial funID capacity args) = "$Partial(" ++ (serialize $ compileID funID) ++ ", " ++ show capacity ++ ", [" ++ intercalate ", " (map serialize args) ++ "])"
-serialize (IConstructor name fields) = "$Constructor(" ++ show name ++ ", {" ++ intercalate ", " (map field fields) ++ "})" where
-	field (f, t) = f ++ ": " ++ serialize t
-serialize (IDot left name) = "$Dot(" ++ serialize left ++ ", " ++ show name ++ ")"
-serialize (IAssign v e) = v ++ " = " ++ serialize e ++ ";\n"
-serialize (IVar v) = "var " ++ v ++ ";\n"
-serialize (IVarAssign v e) = "var " ++ v ++ " = " ++ serialize e ++ ";\n"
-serialize (IIf c t []) = "if (" ++ serialize c ++ ") {\n" ++ (tab $ concat $ map serialize t) ++ "}\n"
-serialize (IIf c t e) = "if (" ++ serialize c ++ ") {\n" ++ (tab $ concat $ map serialize t) ++ "} else {\n" ++ (tab $ concat $ map serialize e) ++ "}\n"
-serialize (IWhile c b) = "while (" ++ serialize c ++ ") {\n" ++ (tab $ concat $ map serialize b) ++ "}\n"
-serialize (IDo e) = serialize e ++ ";\n"
-serialize (IFunc funID args body) =
-	"function " ++ serialize (compileID funID) ++ "(" ++ intercalate ", " args ++ ") {\n" ++ (tab $ concat $ map serialize body) ++ "\treturn $Unit;\n}\n"
-
-serialize IBreak = "break;\n"
-serialize (IReturn e) = "return " ++ serialize e ++ ";\n"
-serialize (ISequence s) = concat $ map serialize s
-serialize (IComment comment) = "// " ++ comment ++ "\n"
 
 instance Functor Compiled where
 	fmap f (Compiled x a) = Compiled x (f a)
@@ -104,11 +70,11 @@ instance Monad Compiled where
 newID :: Compiled a -> Compiled FunctionID
 newID (Compiled fs _)  = Compiled fs (FunctionID (length fs))
 
-addFunction :: FunctionID -> I -> Compiled ()
-addFunction funID fun = Compiled [CompiledFunction funID fun] ()
+addFunction :: FunctionID -> I -> Int -> Compiled ()
+addFunction funID fun arity = Compiled [CompiledFunction funID fun arity] ()
 
 compileID :: FunctionID -> I
-compileID (FunctionID n) = IName ("$Fun_" ++ show n)
+compileID (FunctionID n) = IName ("Fun_" ++ show n)
 
 ----
 
@@ -183,12 +149,12 @@ containedVariables' [] = []
 
 compileExpression :: IDGenerator -> Expression -> Compiled (IDGenerator, I)
 compileExpression gen (ExpressionIdentifier t) = return (gen, IName $ token t)
-compileExpression gen (ExpressionIntegerLiteral t) = return (gen, ILiteral $ token t)
-compileExpression gen (ExpressionDecimalLiteral t) = return (gen, ILiteral $ token t)
-compileExpression gen (ExpressionStringLiteral t) = return (gen, ILiteral $ show $ token t)
+compileExpression gen (ExpressionIntegerLiteral t) = return (gen, IInt $ token t)
+compileExpression gen (ExpressionDecimalLiteral t) = return (gen, IDecimal $ token t)
+compileExpression gen (ExpressionStringLiteral t) = return (gen, IString $ show $ token t)
 compileExpression gen (ExpressionBoolLiteral t) =
 	return (gen, ILiteral $ case token t of "True" -> "true"; "False" -> "false"; _ -> error "invalid boolean constant")
-compileExpression gen (ExpressionBang _) = return (gen, IName "$Bang")
+compileExpression gen (ExpressionBang _) = return (gen, IName "Bang")
 compileExpression gen (ExpressionCall fun args) = do
 	(gen', fun') <- compileExpression gen fun
 	(gen'', args') <- mapGen gen' args
@@ -198,14 +164,14 @@ compileExpression gen e@ExpressionFunc{ arguments, funcBang, body } = do
 	let implicits = containedVariables e
 	(gen', body') <- mapGen' gen body
 	let (funID, gen'') = next gen'
-	addFunction funID (IFunc funID (implicits ++ fullArguments) body')
+	addFunction funID (IFunc funID (implicits ++ fullArguments) body') (length implicits + length fullArguments)
 	return (gen'', IPartial funID (length fullArguments + length implicits) (map IName implicits))
 	where
-	fullArguments = map (token . fst) arguments ++ if isNothing funcBang then [] else ["$Bang"]
+	fullArguments = map (token . fst) arguments ++ if isNothing funcBang then [] else ["Bang"]
 compileExpression gen (ExpressionOp left op right) = do
 	(gen', left') <- compileExpression gen left
 	(gen'', right') <- compileExpression gen' right
-	return (gen'', ICall (IName $ "$Operator[" ++ show (token op) ++ "]") [left', right'])
+	return (gen'', (IOperator (token op)) `ICall` [left', right'])
 compileExpression gen (ExpressionPrefix op arg) = do
 	(gen', arg') <- compileExpression gen arg
 	return (gen', ICall (IName $ "$Prefix[" ++ show (token op) ++ "]") [arg'])
@@ -219,11 +185,11 @@ compileExpression gen (ExpressionDot left name) = do
 compileStatement :: IDGenerator -> Statement -> Compiled (IDGenerator, I)
 compileStatement gen (StatementAssign var value) = do
 	(gen', value') <- compileExpression gen value
-	return (gen', IAssign (token var) (IForce value'))
-compileStatement gen (StatementVarVoid var _) = return (gen, IVar (token var))
+	return (gen', IAssign (IName $ token var) (IForce value'))
+compileStatement gen (StatementVarVoid var _) = return (gen, IVar $ IName (token var))
 compileStatement gen (StatementVarAssign var _ value) = do
 	(gen', value') <- compileExpression gen value
-	return (gen', IVarAssign (token var) (IForce value'))
+	return (gen', IVarAssign (IName (token var)) (IForce value'))
 compileStatement gen (StatementDo value) = do
 	(gen', value') <- compileExpression gen value
 	return (gen', IDo (IForce value'))
@@ -248,7 +214,7 @@ compileStatement gen (StatementBreak _) = return (gen, IBreak)
 compileStatement gen (StatementLet _ block) = do
 	(gen', values) <- valuesOf gen $ filter (not . isStruct) block
 	(gen'', contextualValues) <- makeContexts gen' values
-	let letDeclares = map (\(n, v) -> IVarAssign n v) (zip letLetNames contextualValues)
+	let letDeclares = map (\(n, v) -> IVarAssign (IName n) v) (zip letLetNames contextualValues)
 	return (gen'', ISequence $ [IComment "begin let"] ++ (letDeclares ++ letAssembles) ++ [IComment "end"] )
 	where
 	isStruct StatementStruct{} = True
@@ -259,8 +225,8 @@ compileStatement gen (StatementLet _ block) = do
 		nameOf StatementFunc{funcName} = token funcName
 		nameOf s = error $ "not a valid let-member: " ++ show s
 	letLetNames :: [String]
-	letLetNames = map ("$Let_" ++) letNames
-	letAssembles = [ IVarAssign n (ICall (IName $ "$Let_" ++ n) (map IName $ implicits ++ letLetNames)) | n <- letNames ]
+	letLetNames = map ("Let_" ++) letNames
+	letAssembles = [ IVarAssign (IName n) (ICall (IName $ "Let_" ++ n) (map IName $ implicits ++ letLetNames)) | n <- letNames ]
 	implicits :: [String]
 	implicits = nub' $ concat (map (containedVariables' . (:[])) block) `less` letNames
 	valuesOf mgen [] = return (mgen, [])
@@ -275,11 +241,11 @@ compileStatement gen (StatementLet _ block) = do
 	makeContext :: IDGenerator -> I -> Compiled (IDGenerator, I)
 	makeContext mgen value = do
 		let (funID, mgen') = next mgen
-		addFunction funID $ IFunc funID (implicits ++ letLetNames) (preamble ++ [IReturn value])
+		addFunction funID (IFunc funID (implicits ++ letLetNames) (preamble ++ [IReturn value]) ) (length implicits + length letLetNames)
 		return (mgen', IPartial funID (length $ implicits ++ letNames) [])
 		where
 		preamble :: [I]
-		preamble = [IVarAssign n (ICall (IName $ "$Let_" ++ n) (map IName $ implicits ++ letLetNames)) | n <- letNames]
+		preamble = [IVarAssign (IName n) (ICall (IName $ "Let_" ++ n) (map IName $ implicits ++ letLetNames)) | n <- letNames]
 	makeContexts :: IDGenerator -> [I] -> Compiled (IDGenerator, [I])
 	makeContexts mgen [] = return (mgen, [])
 	makeContexts mgen (i:is) = do
@@ -292,19 +258,5 @@ compileStatement gen StatementFunc{funcToken, funcName, argumentsStatement, func
 compileStatement gen (StatementStruct _ name generics _) = return (gen, IComment $ "struct " ++ token name ++ concat (map ((" " ++) . token) generics) )
 	-- we will pass our implicits off as the shared "context" for evaluation.
 
-compileProgram :: Statement -> String
-compileProgram statement = case compileStatement newGenerator statement of
-	Compiled headers (_, value) ->
-		preludeSource ++
-		concat (map (\(CompiledFunction _ v) -> serialize v) headers) ++
-		"\n\n// Program\n" ++
-		"try {\n" ++
-		tab (serialize value) ++ "\n// Call main\n" ++
-		"$Force($Call(main, [$Bang]));\n" ++
-		"} catch (m) {\n" ++
-		"\tconsole.log('An unexpected error occurred', m);\n" ++
-		"}\n"
-
-
-
-
+compileProgram :: Statement -> Compiled I
+compileProgram statement = fmap snd (compileStatement newGenerator statement)

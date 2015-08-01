@@ -3,8 +3,11 @@ import Parse
 import Lex
 import qualified Verify
 import Expression
-import CompileC
-import System.Environment(getArgs)
+
+import Compile
+import qualified C.Compile as C
+
+import System.Environment(getArgs, getProgName)
 import System.Exit
 
 succeedParse :: Statement -> IO ()
@@ -12,7 +15,7 @@ succeedParse tree = do
 	case Verify.verifyProgram tree of
 		Verify.Pass () -> do
 			putStrLn "Program is correct."
-			writeFile "out.c" $ compileProgram tree
+			writeFile "out.c" $ C.serializeProgram $ compileProgram tree
 		Verify.Flunk messages -> mapM_ describeFailure messages
 
 describeFailure :: Verify.Message -> IO ()
@@ -31,9 +34,10 @@ failParse message rest location = do
 main :: IO ()
 main = do
 	args <- getArgs
+	name <- getProgName 
 	case args of
-		[] -> putStrLn "usage:\n\tmain [file.ni]"
-		(_:_:_) -> putStrLn "usage:\n\tmain [file.ni]"
+		[] -> putStrLn $ "usage:\n\t" ++ name ++ " [file.ni]"
+		(_:_:_) -> putStrLn $ "usage:\n\t" ++ name ++ " [file.ni]"
 		[fname] -> do
 			example <- readFile fname
 			let exampleLexed = lexer example fname

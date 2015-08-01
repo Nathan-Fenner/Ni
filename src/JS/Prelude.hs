@@ -1,4 +1,17 @@
 
+{-# LANGUAGE QuasiQuotes #-}
+
+module JS.Prelude where
+
+import qualified Language.Haskell.TH as TH
+import Language.Haskell.TH.Quote
+
+import Quotes
+
+-- The prelude stores the little "runtime" we use to evaluate programs.
+
+preludeSource :: String
+preludeSource = [lit|
 // -----------------------------------------------
 
 // This file has been generated with Nickel, a toy programming language that combines functional and imperative features.
@@ -154,66 +167,7 @@ var not = $Partial(function(thunk) {
 	return !value;
 }, 1, []);
 
-// <BigInt>
-
-var big = $Partial(function(a) {
-	var value = $Force(a);
-	return new BigInt(value);
-}, 1, []);
-
-var iAdd = $Partial(function(a, b) {
-	var left = $Force(a);
-	var right = $Force(b);
-	return left.add(right);
-}, 2, []);
-
-var iMultiply = $Partial(function(a, b) {
-	var left = $Force(a);
-	var right = $Force(b);
-	return left.multiply(right);
-}, 2, []);
-
-var iDivide = $Partial(function(a, b) {
-	var left = $Force(a);
-	var right = $Force(b);
-	return left.divide(right);
-}, 2, []);
-
-var iSubtract = $Partial(function(a, b) {
-	var left = $Force(a);
-	var right = $Force(b);
-	return left.subtract(right);
-}, 2, []);
-
-var iMod = $Partial(function(a, b) {
-	var left = $Force(a);
-	var right = $Force(b);
-	return left.mod(right);
-}, 2, []);
-
-var iLess = $Partial(function(a, b) {
-	var left = $Force(a);
-	var right = $Force(b);
-	return left.lessThan(right);
-}, 2, []);
-
-var iEquals = $Partial(function(a, b) {
-	var left = $Force(a);
-	var right = $Force(b);
-	return left.equalTo(right);
-}, 2, []);
-
-var iNegate = $Partial(function(a) {
-	var left = $Force(a);
-	return left.negate();
-}, 1, []);
-
-var iPrint = $Partial(function(a, $Bang) {
-	var left = $Force(a);
-	console.log(left.toString());
-	return $Unit;
-}, 2, []);
-
-// </BigInt>
-
 // End of Foreign
+|]
+
+

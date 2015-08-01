@@ -133,13 +133,13 @@ data Op a = OpLeaf a | OpBranch (Op a) Token (Op a) deriving Show
 parseOp :: [String] -> Parse a -> Parse (Op a)
 parseOp names atom = go where
 	go = do
-	left <- atom
-	opMaybe <- lookOperators names
-	case opMaybe of
-		Nothing -> return $ OpLeaf left
-		Just op -> do
-			right <- go
-			return $ OpBranch (OpLeaf left) op right
+		left <- atom
+		opMaybe <- lookOperators names
+		case opMaybe of
+			Nothing -> return $ OpLeaf left
+			Just op -> do
+				right <- go
+				return $ OpBranch (OpLeaf left) op right
 
 opReplace :: (a -> t) -> (t -> Token -> t -> t) -> Op a -> t
 opReplace leafs branches tree = go tree where

@@ -6,3 +6,5 @@ main.exe
 out.js
 *.exe
 out.c
+dist/build/autogen/cabal_macros.h
+dist/build/autogen/Paths_Ni.hs
