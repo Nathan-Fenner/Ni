@@ -3,9 +3,6 @@
 
 module JS.Prelude where
 
-import qualified Language.Haskell.TH as TH
-import Language.Haskell.TH.Quote
-
 import Quotes
 
 -- The prelude stores the little "runtime" we use to evaluate programs.

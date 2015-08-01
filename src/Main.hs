@@ -6,6 +6,7 @@ import Expression
 
 import Compile
 import qualified C.Compile as C
+import qualified JS.Compile as JS
 
 import System.Environment(getArgs, getProgName)
 import System.Exit
@@ -15,7 +16,9 @@ succeedParse tree = do
 	case Verify.verifyProgram tree of
 		Verify.Pass () -> do
 			putStrLn "Program is correct."
-			writeFile "out.c" $ C.serializeProgram $ compileProgram tree
+			let iTree = compileProgram tree
+			writeFile "out.c" $ C.serializeProgram iTree
+			writeFile "out.js" $ JS.serializeProgram iTree
 		Verify.Flunk messages -> mapM_ describeFailure messages
 
 describeFailure :: Verify.Message -> IO ()

@@ -3,9 +3,6 @@
 
 module C.Prelude where
 
-import qualified Language.Haskell.TH as TH
-import Language.Haskell.TH.Quote
-
 import Data.List(intercalate)
 
 import Quotes
@@ -322,6 +319,7 @@ Value b_print(Value number, Value bang) {
 
 invokeBody :: String
 invokeBody = concat $ map go [0..60] where
+	go :: Int -> String
 	go n = interp n [lit|
 	case #:;
 		Value (*fn#)($) = (Value(*)($))function;
@@ -331,7 +329,7 @@ invokeBody = concat $ map go [0..60] where
 	ic n '#' = show n
 	ic n '$' = intercalate ", " $ map (const "Value") [1..n]
 	ic n '%' = intercalate ", " $ map (\i -> interp i "argv[#]") [0..n-1]
-	ic n c = [c]
+	ic _ c = [c]
 
 
 preludeMain :: String

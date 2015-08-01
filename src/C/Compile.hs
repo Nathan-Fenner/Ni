@@ -2,7 +2,7 @@
 
 module C.Compile where
 
-import Data.List(intercalate, sort)
+import Data.List(intercalate)
 import C.Prelude
 import Compile
 
