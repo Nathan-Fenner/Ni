@@ -67,6 +67,7 @@ data Marker = Mark | Protect deriving (Show, Eq)
 
 data Scope = Scope
 	{ scopeReturnType :: Type -- return type
+	, scopeBangAllowed :: Bool -- whether banged expressions are allowable
 	, scopeTypes :: [(String, [String], [(String, Type)])] -- type names in scope
 	, scopeStack :: [(Token, Type)] -- stack & globals
 	, assignStates :: [Either Marker (AssignState, Token)]
@@ -225,7 +226,9 @@ getExpressionType scope (ExpressionCall funValue funArgs) = do
 			Left msg -> flunk (expressionAt arg) msg
 			Right sofar'' -> return sofar''
 		match' right rest free sofar''
-	match' (TypeBangArrow _ right) (ExpressionBang _ : rest) free sofar = match' right rest free sofar
+	match' (TypeBangArrow _ right) (ExpressionBang bangToken : rest) free sofar
+		|scopeBangAllowed scope = match' right rest free sofar
+		|otherwise = flunk bangToken $ "a bang `!` cannot appear in a pure function or a let block"
 	match' (TypeBangArrow _ _) (arg : _) _ _ = flunk (expressionAt arg) $ "expected a `!` instead of value applied to object of function type"
 	match' (TypeGenerics generics right) args@(arg:_) free sofar = case filter (`elem` free) (map token generics) of
 		[] -> match' right args (map token generics ++ free) sofar
@@ -235,7 +238,7 @@ getExpressionType scope (ExpressionCall funValue funArgs) = do
 getExpressionType _scope (ExpressionBang bang) = flunk bang "a bang `!` outside of a matching function call is not allowed"
 getExpressionType scope (ExpressionFunc funcToken generics args bang returns body) = do
 	let scopeBody = setReturn returnType' $ addVariables AssignFinal args scope
-	finalScopeBody <- verifyStatementBlock (addProtect scopeBody) body
+	finalScopeBody <- verifyStatementBlock (addProtect scopeBody{scopeBangAllowed = allowsBang}) body
 	case returnType' === makeType "Void" || hasReturned finalScopeBody of
 		True -> return funcType
 		False -> flunk funcToken $ "function is not Void but fails to unconditionally return"
@@ -243,6 +246,9 @@ getExpressionType scope (ExpressionFunc funcToken generics args bang returns bod
 	returnType' = case returns of
 		Nothing -> makeType "Void"
 		Just t -> t
+	allowsBang = case bang of
+		Nothing -> False
+		Just _  -> True
 	returnType = case bang of
 		Nothing -> returnType'
 		Just _ -> TypeBangArrow (Token "!" (FileEnd "*") Special) returnType'
@@ -379,7 +385,7 @@ verifyStatementTypeDeclare scope (StatementLet letToken body) = do
 	allNewVariable newNames
 	let newScope = addVariables AssignFinal (concat letBody) $ declareTypes declaredTypes scope
 	-- TODO: check that declared structs are correct
-	mapM_ (verifyStatementType newScope) body
+	mapM_ (verifyStatementType newScope{scopeBangAllowed = False}) body -- bangs cannot appear in a let-body
 	return newScope
 	where
 	notShadowed (name, _, _) = case name `elem` map (\(x,_,_) -> x) (scopeTypes scope) of
@@ -528,7 +534,7 @@ verifyStatementType scope (StatementReturn _returnToken (Just value)) = do
 verifyStatementType scope (StatementFunc _funcToken funcName generics arguments bang returns body) = do
 	checkTypeConcrete scope funcType
 	let scopeBody = setReturn returnType' $ addVariables AssignFinal arguments $ declareTypes (map (\g -> (token g, [], [])) generics) $ scope
-	finalBodyScope <- verifyStatementBlock scopeBody body
+	finalBodyScope <- verifyStatementBlock scopeBody{scopeBangAllowed = allowsBang} body
 	case returnType' === makeType "Void" || hasReturned finalBodyScope of
 		True -> return () -- doesn't require that we've reached a return
 		False -> flunk funcName $ "function `" ++ token funcName ++ "` isn't a Void function, but fails to return unconditionally"
@@ -536,6 +542,9 @@ verifyStatementType scope (StatementFunc _funcToken funcName generics arguments 
 	returnType' = case returns of
 		Nothing -> makeType "Void"
 		Just t -> t
+	allowsBang = case bang of
+		Nothing -> False
+		Just _  -> True
 	returnType = case bang of
 		Nothing -> returnType'
 		Just _ -> TypeBangArrow (Token "!" (FileEnd "*") Special) returnType'
@@ -560,7 +569,9 @@ verifyStatementBlock scope (s : ss)
 
 topScope :: Scope
 topScope =
-	Scope (makeType "Void")
+	Scope
+		(makeType "Void")
+		False
 		[ ("Void", [], []), ("Int", [], []), ("String", [], []), ("Bool", [], []), ("Integer", [], []) ]
 		[ (Token "print" (FileEnd "^") Identifier, makeType "Int" `TypeArrow` TypeBangArrow (Token "!" (FileEnd "*") Special) (makeType "Void"))
 		, (Token "putStr" (FileEnd "^") Identifier, makeType "String" `TypeArrow` TypeBangArrow (Token "!" (FileEnd "*") Special) (makeType "Void"))
