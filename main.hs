@@ -4,6 +4,8 @@ import Lex
 import qualified Verify
 import Expression
 import CompileC
+import System.Environment(getArgs)
+import System.Exit
 
 succeedParse :: Statement -> IO ()
 succeedParse tree = do
@@ -28,10 +30,15 @@ failParse message rest location = do
 
 main :: IO ()
 main = do
-	example <- readFile "example.ni"
-	let exampleLexed = lexer example "example.ni"
-	let exampleParsed = run parseModule ("example.ni", exampleLexed)
-	case exampleParsed of
-		Success tree [] -> succeedParse tree
-		Success _tree rest -> putStrLn $ "didn't consume all input: " ++ show rest
-		Error _ message rest location -> failParse message rest location
+	args <- getArgs
+	case args of
+		[] -> putStrLn "usage:\n\tmain [file.ni]"
+		(_:_:_) -> putStrLn "usage:\n\tmain [file.ni]"
+		[fname] -> do
+			example <- readFile fname
+			let exampleLexed = lexer example fname
+			let exampleParsed = run parseModule (fname, exampleLexed)
+			case exampleParsed of
+				Success tree [] -> succeedParse tree >> exitSuccess
+				Success _tree rest -> (putStrLn $ "didn't consume all input: " ++ show rest) >> exitWith (ExitFailure 1)
+				Error _ message rest location -> failParse message rest location >> exitWith (ExitFailure 2)

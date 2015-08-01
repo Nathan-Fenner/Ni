@@ -208,7 +208,14 @@ Value OperatorPlus(Value left, Value right) {
 	Value v;
 	v.kind = INTEGER;
 	v.data.intValue = Integer(Force(left)) + Integer(Force(right));
-	return v;
+	return VALIDATE(v);
+}
+
+Value OperatorPercent(Value left, Value right) {
+	Value v;
+	v.kind = INTEGER;
+	v.data.intValue = Integer(Force(left)) % Integer(Force(right));
+	return VALIDATE(v);
 }
 
 // int == int
@@ -219,7 +226,7 @@ Value OperatorEqualsEquals(Value left, Value right) {
 	Value v;
 	v.kind = INTEGER;
 	v.data.intValue = Integer(Force(left)) == Integer(Force(right));
-	return v;
+	return VALIDATE(v);
 }
 // </operators>
 

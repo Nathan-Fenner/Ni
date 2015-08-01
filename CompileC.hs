@@ -103,7 +103,7 @@ serialize (IWhile c b) = "while (Bool(" ++ serialize c ++ ")) {\n" ++ (tab $ con
 serialize (IDo e) = serialize e ++ ";\n"
 
 serialize (IFunc funID args body) =
-	"Value " ++ serialize (compileID funID) ++ "(Value " ++ intercalate ", Value " (map (serialize . IName) args) ++ ") {\n\tif(DEBUG)printf(\"@%d\\n\",__LINE__);\n" ++ (tab $ concat $ map serialize body) ++ "\treturn Unit;\n}\n"
+	"Value " ++ serialize (compileID funID) ++ "(" ++ intercalate ", " (map (("Value " ++) . serialize . IName) args) ++ ") {\n\tif(DEBUG)printf(\"@%d\\n\",__LINE__);\n" ++ (tab $ concat $ map serialize body) ++ "\treturn Unit;\n}\n"
 
 serialize IBreak = "break;\n"
 serialize (IReturn e) = "return VALIDATE(" ++ serialize e ++ ");\n"
