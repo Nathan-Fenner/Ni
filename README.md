@@ -183,7 +183,7 @@ Structs in Nickel can be made generic. They allow any number of generic paramete
 
 ## Planned Features
 
-* Parametric polymorphism
+* Non-concrete generics
 * Type inference
 * A standard library
 * A foreign function interface

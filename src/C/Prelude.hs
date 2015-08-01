@@ -40,9 +40,18 @@ typedef struct {
 	Value * arg;
 } CallValue;
 
+
+// TODO: actually hash things
+typedef struct {
+	const char* structName;
+	int count;
+	const char** names;
+	Value* values;
+} ConstructorValue;
+
 typedef enum {false, true} bool;
 
-typedef enum {NO_TYPE, UNIT, BANG, PARTIAL, CALL, INTEGER, DOUBLE} KIND;
+typedef enum {NO_TYPE, UNIT, BANG, PARTIAL, CALL, INTEGER, DOUBLE, CONSTRUCTOR} KIND;
 
 typedef union {
 	void * value;
@@ -51,6 +60,7 @@ typedef union {
 	int intValue;
 	double doubleValue;
 	CallValue call;
+	ConstructorValue constructor;
 } ValueData;
 
 struct Value {
@@ -144,6 +154,7 @@ Value Force(Value value) {
 	case UNIT:
 	case BANG:
 	case INTEGER:
+	case CONSTRUCTOR:
 		return value;
 	}
 	printf("unknown kind %d\n", value.kind);
@@ -164,14 +175,36 @@ Value Constructor(const char * name, int len, const char ** names, Value * value
 	if (DEBUG) {
 		printf("@%d\n", __LINE__);
 	}
-
+	Value result;
+	result.kind = CONSTRUCTOR;
+	result.data.constructor.structName = name;
+	result.data.constructor.count = len;
+	result.data.constructor.names = malloc(sizeof(char*) * len);
+	result.data.constructor.values = malloc(sizeof(Value) * len);
+	int i;
+	for (i = 0; i < len; i++) {
+		result.data.constructor.names[i] = names[i];
+		result.data.constructor.values[i] = values[i];
+	}
+	return result;
 }
 
 Value Dot(Value left, const char * field) {
 	if (DEBUG) {
 		printf("@%d\n", __LINE__);
 	}
-
+	if (left.kind != CONSTRUCTOR) {
+		printf("Dot expected a constructor (%d) but got %d", CONSTRUCTOR, left.kind);
+		exit(-1);
+	}
+	int i;
+	for (i = 0; i < left.data.constructor.count; i++) {
+		if (strcmp(field, left.data.constructor.fields[i]) == 0) {
+			return left.data.constructor.values[i];
+		}
+	}
+	printf("no such field %s in construct of type %s", field, left.data.constructor.name);
+	exit(-1);
 }
 
 // value must be forced
