@@ -5,6 +5,11 @@
 #include "stdio.h"
 #include "math.h"
 #include "stdlib.h"
+#include "string.h"
+
+struct Value;
+
+typedef struct Value Value;
 
 typedef struct {
 	void (*function)(); // function pointer of function to Invoke()
@@ -14,13 +19,14 @@ typedef struct {
 } PartialValue;
 
 typedef struct {
-	Value * left;
-	Value * right;
+	Value * fun;
+	Value * args;
+	int argCount;
 } CallValue;
 
 typedef enum {false, true} bool;
 
-typedef enum {UNIT, VOID, BANG, PARTIAL, CALL, INTEGER}
+typedef enum {NO_TYPE, UNIT, BANG, PARTIAL, CALL, INTEGER} KIND;
 
 typedef union {
 	void * value;
@@ -30,10 +36,10 @@ typedef union {
 	CallValue call;
 } ValueData;
 
-typedef struct {
+struct Value {
 	int kind;
 	ValueData data;
-} Value;
+};
 
 typedef struct {
 	int n;
@@ -42,15 +48,15 @@ typedef struct {
 } TypeDescription;
 
 const Value Unit = {UNIT};
-const Value Void = {VOID};
 const Value Bang = {BANG};
 
-Value Call(Value partial, int argc, Value * argv) {
-	Value call;
-	call.data.call.left = malloc(sizeof(Value));
-	*call.data.call.left = partial;
-	call.data.call.right = malloc(sizeof(Value) * argc);
-	memcpy(call.right, argv, sizeof(Value) * argc);
+Value Call(Value fun, int argCount, Value * args) {
+	Value call = {CALL};
+	call.data.call.fun = malloc(sizeof(Value));
+	*call.data.call.fun = fun;
+	call.data.call.args = malloc(sizeof(Value) * argCount);
+	memcpy(call.data.call.args, args, sizeof(Value) * argCount);
+	call.data.call.argCount = argCount;
 	return call;
 }
 
@@ -62,10 +68,38 @@ Value Force(Value value) {
 	switch (value.kind) {
 	case PARTIAL:
 		if (value.data.partial.applied == value.data.partial.capacity) {
-			return Invoke(value.data.partial.function, value.data.partial.applied, value.data.partial.arguments);
+			return Force(Invoke(value.data.partial.function, value.data.partial.applied, value.data.partial.arguments));
 		} else {
 			return value;
 		}
+	case CALL:
+		Value fun = Force(*value.data.call.fun);
+		if (value.data.call.argCount == 0) {
+			return fun;
+		}
+		if (fun.kind != PARTIAL) {
+			printf("evaluating this function produced kind = %d, not the expected %d", fun.kind, PARTIAL);
+			exit(-1);
+		}
+		Value copy = fun;
+		copy.data.partial.arguments = malloc(sizeof(Value) * copy.data.partial.capacity); // TODO: memory leak
+		memcpy(copy.data.partial.arguments, fun.data.partial.arguments, sizeof(Value) * fun.data.partial.applied);
+		copy.data.partial.arguments[fun.data.partial.applied++] = value.data.call.args[0];
+		
+		Value *copyPointer = malloc(sizeof(Value));
+		*copyPointer = copy; // TODO: memory leak
+
+		Value tail;
+		tail.kind = CALL;
+		tail.data.call.fun = copyPointer;
+		tail.data.call.args = value.data.call.args + 1;
+		tail.data.call.argCount =  value.data.call.argCount-1;
+
+		return Force(tail);
+	case UNIT:
+	case BANG:
+	case INTEGER:
+		return value;
 	}
 	return value;
 }
@@ -117,5 +151,15 @@ Value OperatorEqualsEquals(Value left, Value right) {
 	return v;
 }
 // </operators>
+
+// <built-in>
+
+Value _print(Value number, Value bang) {
+	int q = Integer(Force(number));
+	printf("%d\n", q);
+	return Unit;
+}
+
+// </built-in>
 
 // </prelude>

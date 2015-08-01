@@ -3,14 +3,14 @@ import Parse
 import Lex
 import qualified Verify
 import Expression
-import Compile
+import CompileC
 
 succeedParse :: Statement -> IO ()
 succeedParse tree = do
 	case Verify.verifyProgram tree of
 		Verify.Pass () -> do
 			putStrLn "Program is correct."
-			writeFile "out.js" $ compileProgram tree
+			writeFile "out.c" $ compileProgram tree
 		Verify.Flunk messages -> mapM_ describeFailure messages
 
 describeFailure :: Verify.Message -> IO ()
