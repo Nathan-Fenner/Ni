@@ -3,6 +3,7 @@ import Parse
 import Lex
 import qualified Verify
 import Expression
+import Optimize
 
 import Compile
 import qualified C.Compile as C
@@ -17,8 +18,9 @@ succeedParse tree = do
 		Verify.Pass () -> do
 			putStrLn "Program is correct."
 			let iTree = compileProgram tree
-			writeFile "out.c" $ C.serializeProgram iTree
-			writeFile "out.js" $ JS.serializeProgram iTree
+			let iTree' = optimizeProgram iTree
+			writeFile "out.c" $ C.serializeProgram iTree'
+			writeFile "out.js" $ JS.serializeProgram iTree'
 		Verify.Flunk messages -> mapM_ describeFailure messages
 
 describeFailure :: Verify.Message -> IO ()

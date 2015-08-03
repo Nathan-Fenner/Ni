@@ -142,24 +142,26 @@ var $Prefix = {
 // -----------------------------------------------
 // Start of Foreign
 
-var print = $Partial(function(thunk, $Bang) {
+var _print_foreign = function(thunk, $Bang) {
+	var value = $Force(thunk);
+	console.log(value);
+	return $Unit;
+}
+
+var _print = $Partial(_print_foreign, 2, []);
+
+var _putStr = $Partial(function(thunk, $Bang) {
 	var value = $Force(thunk);
 	console.log(value);
 	return $Unit;
 }, 2, []);
 
-var putStr = $Partial(function(thunk, $Bang) {
-	var value = $Force(thunk);
-	console.log(value);
-	return $Unit;
-}, 2, []);
-
-var show = $Partial(function(thunk) {
+var _show = $Partial(function(thunk) {
 	var value = $Force(thunk);
 	return value + "";
 }, 1, []);
 
-var not = $Partial(function(thunk) {
+var _not = $Partial(function(thunk) {
 	var value = $Force(thunk);
 	return !value;
 }, 1, []);

@@ -10,7 +10,7 @@ import ParseType
 import Expression
 import Lex
 
-newtype FunctionID = FunctionID Int deriving (Show, Eq)
+data FunctionID = FunctionID Int | FunctionRaw String deriving (Show, Eq)
 
 data IDGenerator = IDGenerator{next :: (FunctionID, IDGenerator)}
 
@@ -53,7 +53,7 @@ data I
 	| IReturn I
 	| ISequence [I]
 	| IComment String
-	deriving Show
+	deriving (Eq, Show)
 
 
 instance Functor Compiled where
@@ -75,6 +75,7 @@ addFunction funID fun arity = Compiled [CompiledFunction funID fun arity] ()
 
 compileID :: FunctionID -> I
 compileID (FunctionID n) = IName ("Fun_" ++ show n)
+compileID (FunctionRaw n) = IName n
 
 ----
 
