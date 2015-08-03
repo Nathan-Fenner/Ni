@@ -19,7 +19,7 @@ succeedParse tree = do
 			putStrLn "Program is correct."
 			let iTree = compileProgram tree
 			let iTree' = optimizeProgram iTree
-			writeFile "out.c" $ C.serializeProgram iTree'
+			-- writeFile "out.c" $ C.serializeProgram iTree'
 			writeFile "out.js" $ JS.serializeProgram iTree'
 		Verify.Flunk messages -> mapM_ describeFailure messages
 

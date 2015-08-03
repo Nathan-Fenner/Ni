@@ -40,6 +40,9 @@ inlineConstants c x@IDecimal{} = (c, x)
 inlineConstants c x@IString{} = (c, x)
 inlineConstants c x@ILiteral{} = (c, x)
 
+inlineConstants c (IForce (IPartial fun len args))
+	|length args < len = inlineConstants c $ IPartial fun len args
+	|length args == len = inlineConstants c $ IInvoke fun args
 inlineConstants c (ICall fun []) = inlineConstants c fun
 inlineConstants c (ICall (IPartial fun len args) args')
 	|count < len = inlineConstants c $ ICall (IPartial fun len (args ++ take extra args')) (drop extra args')
@@ -48,6 +51,7 @@ inlineConstants c (ICall (IPartial fun len args) args')
 	extra = len - count
 inlineConstants c (IForce x@IInt{}) = inlineConstants c x
 
+inlineConstants c (IInvoke fun args) = (c, IInvoke fun $ map (inliner c) args)
 inlineConstants c (ICall fun args) = (c, ICall (inliner c fun) (map (inliner c) args))
 inlineConstants c (IForce value) = (c, IForce $ inliner c value)
 inlineConstants c (IPartial fun len args) = (c, IPartial fun len $ map (inliner c) args)
@@ -79,7 +83,11 @@ inlineConstants c (ISequence body) = (\(x,y) -> (x, ISequence y)) $ inlineConsta
 inlineConstants c x@IComment{} = (c, x)
 
 inliner :: Constant -> I -> I
-inliner c x = snd $ inlineConstants c x
+inliner c x
+	|x == next = x
+	|otherwise = inliner c next
+	where
+	next = snd $ inlineConstants c x
 
 inlineConstants' :: Constant -> [I] -> (Constant, [I])
 inlineConstants' c [] = (c, [])
@@ -96,6 +104,7 @@ isConstant IDecimal{} = True
 isConstant IString{} = True
 isConstant ILiteral{} = True
 isConstant (ICall fun args) = isConstant fun && all isConstant args
+isConstant IInvoke{} = False -- TODO: reconsider? (since this is like a force)
 isConstant (IForce _) = False -- TODO: reconsider?
 isConstant (IPartial _ _ args) = all isConstant args
 isConstant (IConstructor _ fields) = all (isConstant . snd) fields

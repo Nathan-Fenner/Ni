@@ -38,6 +38,7 @@ data I
 	| IString String
 	| ILiteral String
 	| ICall I [I]
+	| IInvoke FunctionID [I]
 	| IForce I
 	| IPartial FunctionID Int [I]
 	| IConstructor String [(String, I)]

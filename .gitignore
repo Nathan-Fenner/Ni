@@ -10,3 +10,4 @@ dist/build/autogen/cabal_macros.h
 dist/build/autogen/Paths_Ni.hs
 dist/package.conf.inplace
 dist/setup-config
+dist/setup-config

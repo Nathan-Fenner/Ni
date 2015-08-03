@@ -29,6 +29,7 @@ serialize (IOperator op) = "$Operator[" ++ op ++ "]"
 serialize (ILiteral s) = s
 serialize (ICall f a) = "$Call(" ++ serialize f ++ ", [" ++ intercalate ", " (map serialize a) ++ "])"
 serialize (IForce x) = "$Force(" ++ serialize x ++ ")"
+serialize (IInvoke fun args) = serialize (compileID fun) ++ "(" ++ intercalate ", " (map serialize args) ++ ")"
 serialize (IPartial funID capacity args) = "$Partial(" ++ serialize (compileID funID) ++ ", " ++ show capacity ++ ", [" ++ intercalate ", " (map serialize args) ++ "])"
 serialize (IConstructor name fields) = "$Constructor(" ++ show name ++ ", {" ++ intercalate ", " (map field fields) ++ "})" where
 	field (f, t) = f ++ ": " ++ serialize t
