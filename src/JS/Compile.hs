@@ -28,6 +28,7 @@ serialize (IString i) = i
 serialize (IOperator op) = "$Operator[" ++ op ++ "]"
 serialize (ILiteral s) = s
 serialize (ICall f a) = "$Call(" ++ serialize f ++ ", [" ++ intercalate ", " (map serialize a) ++ "])"
+serialize (IRemember x) = "$Remember(" ++ serialize x ++ ")"
 serialize (IForce x) = "$Force(" ++ serialize x ++ ")"
 serialize (IInvoke fun args) = serialize (compileID fun) ++ "(" ++ intercalate ", " (map serialize args) ++ ")"
 serialize (IPartial funID capacity args) = "$Partial(" ++ serialize (compileID funID) ++ ", " ++ show capacity ++ ", [" ++ intercalate ", " (map serialize args) ++ "])"

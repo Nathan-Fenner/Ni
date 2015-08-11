@@ -9,6 +9,13 @@ import Nice
 simplify :: I -> Maybe I
 simplify (ICall (ICall fun xs) ys) = Just $ ICall fun (xs ++ ys)
 simplify (ICall fun []) = Just fun
+simplify (IRemember x@IOperator{}) = Just x
+simplify (IRemember x@IInt{}) = Just x
+simplify (IRemember x@IDecimal{}) = Just x
+simplify (IRemember x@IString{}) = Just x
+simplify (IRemember x@ILiteral{}) = Just x
+simplify (IRemember (IRemember x)) = Just (IRemember x)
+simplify (IForce (IRemember x)) = Just (IForce x)
 simplify (IForce (IForce x)) = Just (IForce x)
 simplify (IForce (IPartial fun n sofar))
 	|length sofar == n = Just $ IForce $ IInvoke fun sofar

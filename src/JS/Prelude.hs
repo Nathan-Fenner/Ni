@@ -33,8 +33,11 @@ function $Partial(fun, capacity, args) {
 	}
 	return {type:"partial", fun: fun, capacity: capacity, args: args};
 }
+function $Remember(thing) {
+	return {type: "remember", thing: thing};
+}
 function $Call(fun, args) {
-	return {type: "call", fun:fun, args: args};
+	return {type: "call", fun: fun, args: args};
 }
 function $Constructor(type, fields) {
 	return {type:"constructor", name: type, fields: fields};
@@ -65,8 +68,17 @@ function $Force(e) {
 				throw { message: "e.capacity < e.args.length", e: e };
 			}
 			// An invokation is required
-			return $Force( e.fun.apply(undefined, e.args) );
+			return $Force( e.fun.apply(undefined, e.args.map($Remember)) );
 		}
+	}
+	if (e.type === "remember") {
+		var value = $Force(e.thing);
+		e.type = "stored";
+		e.thing = value;
+		return value;
+	}
+	if (e.type === "stored") {
+		return e.thing;
 	}
 	if (e.type === "dot") {
 		var value = $Force(e.value);

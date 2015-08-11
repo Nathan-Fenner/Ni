@@ -39,6 +39,7 @@ data I
 	| ILiteral String
 	| ICall I [I]
 	| IInvoke FunctionID [I]
+	| IRemember I
 	| IForce I
 	| IPartial FunctionID Int [I]
 	| IConstructor String [(String, I)]
@@ -216,7 +217,7 @@ compileStatement gen (StatementBreak _) = return (gen, IBreak)
 compileStatement gen (StatementLet _ block) = do
 	(gen', values) <- valuesOf gen $ filter (not . isStruct) block
 	(gen'', contextualValues) <- makeContexts gen' values
-	let letDeclares = map (\(n, v) -> IVarAssign (IName n) v) (zip letLetNames contextualValues)
+	let letDeclares = map (\(n, v) -> IVarAssign (IName n) (IRemember v) ) (zip letLetNames contextualValues)
 	return (gen'', ISequence $ [IComment "begin let"] ++ (letDeclares ++ letAssembles) ++ [IComment "end"] )
 	where
 	isStruct StatementStruct{} = True
