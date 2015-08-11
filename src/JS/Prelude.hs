@@ -146,25 +146,29 @@ var _print_foreign = function(thunk, $Bang) {
 	var value = $Force(thunk);
 	console.log(value);
 	return $Unit;
-}
+};
 
 var _print = $Partial(_print_foreign, 2, []);
 
-var _putStr = $Partial(function(thunk, $Bang) {
+var _putStr_foreign = function(thunk, $Bang) {
 	var value = $Force(thunk);
 	console.log(value);
 	return $Unit;
-}, 2, []);
+}
 
-var _show = $Partial(function(thunk) {
-	var value = $Force(thunk);
+var _putStr = $Partial(_putStr_foreign, 2, []);
+
+var _show_foreign = function(thunk) {
 	return value + "";
-}, 1, []);
+};
 
-var _not = $Partial(function(thunk) {
-	var value = $Force(thunk);
-	return !value;
-}, 1, []);
+var _show = $Partial(_show_foreign, 1, []);
+
+var _not_foreign = function(thunk) {
+	return !$Force(thunk);
+};
+
+var _not = $Partial(_not_foreign, 1, []);
 
 // End of Foreign
 |]
