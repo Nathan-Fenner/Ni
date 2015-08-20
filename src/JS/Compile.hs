@@ -40,7 +40,7 @@ serialize (IAssign (IRef name ref) e) = escape name ++ " = $Copy(" ++ escape nam
 serialize (IAssign var e) = serializeRefFull var ++ " = " ++ serialize e ++ ";\n" where
 	serializeRefFull :: I -> String
 	serializeRefFull (IName n) = escape n
-	serializeRefFull (IDot ref field) = serializeRefFull ref ++ ".fields." ++ field ++ " = $Force(" ++ serializeRefShort ref ++ ".fields." ++ field ++ ");\n" ++ serializeRefShort ref ++ ".fields." ++ field
+	serializeRefFull (IDot ref field) = serializeRefFull ref ++ " = $Force(" ++ serializeRefShort ref ++ ");\n" ++ serializeRefShort ref ++ ".fields." ++ field
 	serializeRefFull invalid = error $ "invalid reference I: " ++ show invalid
 	serializeRefShort :: I -> String
 	serializeRefShort (IName n) = escape n
