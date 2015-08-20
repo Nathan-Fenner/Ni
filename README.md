@@ -111,7 +111,7 @@ struct Point {
 }
 
 func add (a : Point) (b : Point) : Point {
-	return {Point | x = a.x + b.x, y = a.y + b.y};
+	return { Point | x = a.x + b.x, y = a.y + b.y};
 }
 
 func printPoint (p : Point)! {
@@ -120,7 +120,7 @@ func printPoint (p : Point)! {
 }
 
 func main! {
-	printPoint (add {Point | x = 3, y = 7} {Point | x = 2, y = 1})!;
+	printPoint (add { Point | x = 3, y = 7} { Point | x = 2, y = 1})!;
 }
 ```
 "Structs" are the basic way to store compound data. The struct instantiation syntax is a little unusual, but is concise and unambiguous.
@@ -147,10 +147,10 @@ func concat (p : Pair String) : String {
 }
 
 func main! {
-	var myPair : Pair Int = {Pair Int | left = 3, right = 4 };
+	var myPair : Pair Int = { Pair Int | left = 3, right = 4 };
 	var sum : Int = add myPair;
 	var product : Int = multiply myPair;
-	var both : Pair String = {Pair String | left = show sum, right = show product };
+	var both : Pair String = { Pair String | left = show sum, right = show product };
 	putStr (concat both)!;
 }
 ```
