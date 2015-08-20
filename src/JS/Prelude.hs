@@ -45,6 +45,25 @@ function $Constructor(type, fields) {
 function $Dot(value, field) {
 	return {type:"dot", value:value, field:field};
 }
+function $ShallowCopy(value) {
+	if (typeof value != 'object') {
+		return value;
+	}
+	var copy = {};
+	for (var i in value) {
+		copy[i] = value[i];
+	}
+	return copy;
+}
+function $Copy(value) {
+	if (typeof value != "object") {
+		return value;
+	}
+	if (value.type == "constructor") {
+		return {type:"constructor", name: value.name, fields: $ShallowCopy(value.fields)};
+	}
+	return value;
+}
 function $Force(e) {
 	if (typeof e === "function") {
 		throw { message: "tried to a force a function", fun:e };
@@ -56,9 +75,6 @@ function $Force(e) {
 		|| e.type === "unit"
 		|| e.type === "constructor") {
 		return e; // these are properly atomic values
-	}
-	if (e instanceof BigInt) {
-		return e; // atomic library value
 	}
 	if (e.type === "partial") {
 		if (e.args.length < e.capacity) {

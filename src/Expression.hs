@@ -188,8 +188,33 @@ parseExpression = parseOperators
 	, (OpPrefix, ["-"])
 	]
 
+data Reference
+	= RefName Token
+	| RefField Reference Token
+	-- | Access Reference Expression
+	deriving Show
+
+referenceModifies :: Reference -> Token
+referenceModifies (RefName name) = name
+referenceModifies (RefField ref _) = referenceModifies ref
+
+parseReferenceSoft :: Parse Reference
+parseReferenceSoft = do
+	name <- soften $ expectIdentifier "expect name to open reference"
+	appliers <- parseMany (dot) -- TODO: accesses
+	return $ wrapUp (RefName name) appliers
+	where
+	dot :: Parse Token
+	dot = do
+		_ <- soften $ expectSpecial "." "///"
+		name <- expectIdentifier "expect name to follow `.` in reference"
+		return name
+	wrapUp :: Reference -> [Token] -> Reference
+	wrapUp ref [] = ref
+	wrapUp ref (field : rest) = wrapUp (ref `RefField` field) rest
+
 data Statement
-	= StatementAssign Token Expression
+	= StatementAssign Reference Expression
 	| StatementVarVoid Token Type
 	| StatementVarAssign Token Type Expression
 	| StatementDo Expression
@@ -213,7 +238,7 @@ data Statement
 
 parseAssign :: Parse Statement
 parseAssign = do
-	name <- soften $ expectIdentifier "expected name to begin assignment"
+	name <- parseReferenceSoft
 	_ <- soften $ expectSpecial "=" "expected assignment operator `=` to follow variable name"
 	right <- parseExpression
 	_ <- expectSpecial ";" "expected `;` to terminate statement"

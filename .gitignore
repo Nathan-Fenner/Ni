@@ -11,3 +11,4 @@ dist/build/autogen/Paths_Ni.hs
 dist/package.conf.inplace
 dist/setup-config
 dist/setup-config
+*.ni

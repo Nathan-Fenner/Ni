@@ -22,6 +22,7 @@ escape s = "_" ++ s
 
 serialize :: I -> String
 serialize (IName n) = escape n
+serialize (IRef _ ref) = serialize ref
 serialize (IInt i) = i
 serialize (IDecimal i) = i
 serialize (IString i) = i
@@ -35,7 +36,16 @@ serialize (IPartial funID capacity args) = "$Partial(" ++ serialize (compileID f
 serialize (IConstructor name fields) = "$Constructor(" ++ show name ++ ", {" ++ intercalate ", " (map field fields) ++ "})" where
 	field (f, t) = f ++ ": " ++ serialize t
 serialize (IDot left name) = "$Dot(" ++ serialize left ++ ", " ++ show name ++ ")"
-serialize (IAssign v e) = serialize v ++ " = " ++ serialize e ++ ";\n"
+serialize (IAssign (IRef name ref) e) = escape name ++ " = $Copy(" ++ escape name ++ ");\n" ++ serialize (IAssign ref e)
+serialize (IAssign var e) = serializeRefFull var ++ " = " ++ serialize e ++ ";\n" where
+	serializeRefFull :: I -> String
+	serializeRefFull (IName n) = escape n
+	serializeRefFull (IDot ref field) = serializeRefFull ref ++ ".fields." ++ field ++ " = $Force(" ++ serializeRefShort ref ++ ".fields." ++ field ++ ");\n" ++ serializeRefShort ref ++ ".fields." ++ field
+	serializeRefFull invalid = error $ "invalid reference I: " ++ show invalid
+	serializeRefShort :: I -> String
+	serializeRefShort (IName n) = escape n
+	serializeRefShort (IDot ref field) = serializeRefShort ref ++ ".fields." ++ field
+	serializeRefShort invalid = error $ "invalid reference I: " ++ show invalid
 serialize (IVar v) = "var " ++ serialize v ++ ";\n"
 serialize (IVarAssign v e) = "var " ++ serialize v ++ " = " ++ serialize e ++ ";\n"
 serialize (IIf c t []) = "if (" ++ serialize c ++ ") {\n" ++ (tab $ concat $ map serialize t) ++ "}\n"
@@ -44,7 +54,6 @@ serialize (IWhile c b) = "while (" ++ serialize c ++ ") {\n" ++ (tab $ concat $ 
 serialize (IDo e) = serialize e ++ ";\n"
 serialize (IFunc funID args body) =
 	"function " ++ serialize (compileID funID) ++ "(" ++ intercalate ", " (map escape args) ++ ") {\n" ++ (tab $ concat $ map serialize body) ++ "\treturn $Unit;\n}\n"
-
 serialize IBreak = "break;\n"
 serialize (IReturn e) = "return " ++ serialize e ++ ";\n"
 serialize (ISequence s) = concat $ map serialize s

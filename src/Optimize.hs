@@ -14,6 +14,7 @@ simplify (IRemember x@IInt{}) = Just x
 simplify (IRemember x@IDecimal{}) = Just x
 simplify (IRemember x@IString{}) = Just x
 simplify (IRemember x@ILiteral{}) = Just x
+simplify (IRemember x@IPartial{}) = Just x
 simplify (IRemember (IRemember x)) = Just (IRemember x)
 simplify (IForce (IRemember x)) = Just (IForce x)
 simplify (IForce (IForce x)) = Just (IForce x)
@@ -72,6 +73,9 @@ simplifyTree' (IInvoke fun args) = case simplifyTrees args  of
 simplifyTree' (IForce value) = case simplifyTree value of
 	Nothing     -> Nothing
 	Just value' -> Just $ IForce value'
+simplifyTree' (IRemember value) = case simplifyTree value of
+	Nothing     -> Nothing
+	Just value' -> Just $ IRemember value'
 simplifyTree' (IPartial fun len args) = case simplifyTrees args of
 	Just args' -> Just $ IPartial fun len args'
 	Nothing    -> Nothing
@@ -81,6 +85,9 @@ simplifyTree' (IConstructor name fields) = case simplifyTrees $ map snd fields o
 simplifyTree' (IDot left name) = case simplifyTree left of
 	Just left' -> Just $ IDot left' name
 	Nothing    -> Nothing
+simplifyTree' (IRef name ref) = case simplify ref of
+	Just ref' -> Just $ IRef name ref'
+	Nothing -> Nothing
 simplifyTree' (IAssign var value) = case check $ (var ?$ simplifyTree) ?: (value ?$ simplifyTree) ?: Nil  of
 	Just (var' ::: value' ::: Nil) -> Just $ IAssign var' value'
 	Nothing                        -> Nothing

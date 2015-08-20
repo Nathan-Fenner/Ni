@@ -32,6 +32,7 @@ data Compiled a = Compiled [CompiledFunction] a deriving Show
 
 data I
 	= IName String -- a lexical name (in the sense)
+	| IRef String I -- a reference; the name is the modified variable
 	| IOperator String
 	| IInt String
 	| IDecimal String
@@ -185,10 +186,14 @@ compileExpression gen (ExpressionDot left name) = do
 	(gen', left') <- compileExpression gen left
 	return (gen', IDot left' (token name))
 
+compileReference :: Reference -> I
+compileReference (RefName name) = IName (token name)
+compileReference (RefField ref field) = IDot (compileReference ref) (token field)
+
 compileStatement :: IDGenerator -> Statement -> Compiled (IDGenerator, I)
-compileStatement gen (StatementAssign var value) = do
+compileStatement gen (StatementAssign ref value) = do
 	(gen', value') <- compileExpression gen value
-	return (gen', IAssign (IName $ token var) (IForce value'))
+	return (gen', IAssign (IRef (token $ referenceModifies ref) $ compileReference ref) (IForce value'))
 compileStatement gen (StatementVarVoid var _) = return (gen, IVar $ IName (token var))
 compileStatement gen (StatementVarAssign var _ value) = do
 	(gen', value') <- compileExpression gen value

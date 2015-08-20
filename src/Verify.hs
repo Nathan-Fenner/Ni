@@ -34,8 +34,12 @@ instance Monad Check where
 flunk :: Token -> String -> Check any
 flunk atToken message = Flunk [Message atToken message]
 
+referenceAt :: Reference -> Token
+referenceAt (RefName name) = name
+referenceAt (RefField ref _) = referenceAt ref
+
 statementAt :: Statement -> Token
-statementAt (StatementAssign t _) = t
+statementAt (StatementAssign ref _) = referenceAt ref
 statementAt (StatementVarVoid t _) = t
 statementAt (StatementVarAssign t _ _) = t
 statementAt (StatementDo e) = expressionAt e
@@ -108,11 +112,12 @@ dropLevel scope@Scope{assignStates} = case assignStates of
 	(Left Mark : rest) -> scope{assignStates = rest}
 	(_ : rest) -> dropLevel scope{assignStates = rest}
 
-tryAssignment :: Token -> Scope -> Check Scope
-tryAssignment var scope = do
+tryAssignment :: Reference -> Scope -> Check Scope
+tryAssignment ref scope = do
 	fixedUp <- fixUp (assignStates scope)
 	return $ scope{ assignStates = fixedUp }
 	where
+	var = referenceModifies ref
 	fixUp [] = error $ "tried to assign unknown variable " ++ show var
 	fixUp (pair@(Right(assignState, varName)) : rest)
 		|token varName == token var = case assignState of
@@ -186,6 +191,13 @@ lookupTypeDeclaration structType Scope{scopeTypes} = case canonical of
 			True -> Right $ map (\(f, t) -> (,) f $ replaceTypes (zip generics' generics) t) fields'
 	where
 	canonical = canonicalType structType
+
+findFieldType :: Type -> Token -> Scope -> Check Type
+findFieldType structType field scope = case lookupTypeDeclaration structType scope of
+	Left msg -> flunk field msg
+	Right fields -> case [t | (n, t) <- fields, n == token field] of
+		[] -> flunk field $ "type `" ++ niceType structType ++ "` has no field `" ++ token field ++ "`"
+		(t:_) -> return t
 
 mustReturn :: Scope -> Type
 mustReturn Scope{scopeReturnType} = scopeReturnType
@@ -316,15 +328,8 @@ getExpressionType scope (ExpressionConstructor name fields) = case lookupTypeDec
 		(v : _) -> Just v
 getExpressionType scope (ExpressionDot left field) = do
 	leftType <- getExpressionType scope left
-	case lookupTypeDeclaration leftType scope of
-		Left msg -> flunk field $ "can't index non-struct type `" ++ niceType leftType ++ "`: " ++ msg
-		Right fields -> case lookUp (token field) fields of
-			Nothing -> flunk field $ "type `" ++ niceType leftType ++ "` has no field called `" ++ show field ++ "`"
-			Just t -> return t
-	where
-	lookUp k m = case [v | (k', v) <- m, k == k'] of
-		[] -> Nothing
-		(v : _) -> Just v
+	fieldType <- findFieldType leftType field scope
+	return fieldType
 
 -- Checks that declarations are unique
 verifyStatementTypeDeclare :: Scope -> Statement -> Check Scope
@@ -350,8 +355,8 @@ verifyStatementTypeDeclare scope statement@(StatementVarAssign varName varType _
 	lookUp k m = case [k' | (k', _) <- m, token k == token k'] of
 		[] -> Nothing
 		(v : _) -> Just v
-verifyStatementTypeDeclare scope statement@(StatementAssign varName _) = do
-	newScope <- tryAssignment varName scope
+verifyStatementTypeDeclare scope statement@(StatementAssign ref _) = do
+	newScope <- tryAssignment ref scope
 	verifyStatementType scope statement
 	return newScope
 verifyStatementTypeDeclare scope statement@StatementFunc{funcName, genericsStatement, argumentsStatement, returnTypeStatement, funcBangStatement} = do
@@ -486,6 +491,15 @@ verifyStatementTypeDeclare scope (StatementIfElse _ condition bodyThen bodyElse)
 -- The catch-all for the rest:
 verifyStatementTypeDeclare scope statement = verifyStatementType scope statement >> return scope
 
+findReferenceType :: Scope -> Reference -> Check Type
+findReferenceType scope (RefName name) = case getType name scope of
+	Nothing -> flunk name $ "variable `" ++ token name ++ "` is not in scope"
+	Just t -> return t
+findReferenceType scope (RefField ref field) = do
+	refType <- findReferenceType scope ref
+	fieldType <- findFieldType refType field scope
+	return fieldType
+
 verifyStatementType :: Scope -> Statement -> Check ()
 verifyStatementType scope (StatementVarVoid _ varType) = do
 	checkTypeConcrete scope varType
@@ -497,13 +511,12 @@ verifyStatementType scope (StatementVarAssign _ varType value) = do
 		Left msg -> flunk (expressionAt value) $ "illegal assignment: " ++ msg
 		Right _ -> return ()
 	return ()
-verifyStatementType scope (StatementAssign nameToken value) = do
+verifyStatementType scope (StatementAssign ref value) = do
 	valueType <- getExpressionType scope value
-	case getType nameToken scope of
-		Nothing -> flunk nameToken $ "variable `" ++ token nameToken ++ "` is undeclared or out of scope"
-		Just expect -> case unifyTypes expect valueType [] of
-			Left msg -> flunk (expressionAt value) $ "illegal assignment: " ++ msg
-			Right _ -> return ()
+	refType <- findReferenceType scope ref
+	case unifyTypes refType valueType [] of
+		Left msg -> flunk (expressionAt value) $ "illegal assignment: " ++ msg
+		Right _ -> return ()
 verifyStatementType scope (StatementDo value) = do
 	_ <- getExpressionType scope value
 	return ()
