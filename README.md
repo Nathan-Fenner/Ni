@@ -123,9 +123,9 @@ func main! {
 	printPoint (add {Point | x = 3, y = 7} {Point | x = 2, y = 1})!;
 }
 ```
-"Structs" are the basic way to store compound data. The struct instantiation syntax is a little unusual, but works well with the rest of the language's syntax features.
+"Structs" are the basic way to store compound data. The struct instantiation syntax is a little unusual, but is concise and unambiguous.
 
-Struct literal fields are always keyed.
+Struct literal fields are always keyed, and no field is optional.
 
 ### Generic Data Types
 ```go
@@ -185,8 +185,9 @@ Structs in Nickel can be made generic. They allow any number of generic paramete
 
 * Non-concrete generics
 * Type inference
-* A standard library
+* A larger standard library
 * A foreign function interface
 * Objects and Methods
 * Concurrency features
 * Better error messages
+* Do-notation
